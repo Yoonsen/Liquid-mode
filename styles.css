@@ -160,8 +160,67 @@ canvas {
 }
 
 /* ==========================================================================
-   Toppbanner & verktøylinje
+   Oppdateringsvarsel (som i neo-dhlab) & Toppbanner
    ========================================================================== */
+
+.update-banner {
+  max-inline-size: 96rem;
+  margin: 0.65rem auto 0;
+  padding: 0.65rem 1.125rem;
+  background-color: var(--bg-panel);
+  border: 2px solid var(--brand-color);
+  border-radius: 0.75rem;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  box-shadow: 0 6px 20px rgba(29, 78, 216, 0.14);
+}
+
+.update-banner[hidden] {
+  display: none;
+}
+
+.update-banner-text {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.88rem;
+}
+
+.update-dot {
+  inline-size: 0.6rem;
+  block-size: 0.6rem;
+  border-radius: 50%;
+  background-color: #16a34a;
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.22);
+}
+
+.update-banner-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.title-with-version {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.version-pill {
+  font-size: 0.74rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  padding: 0.1rem 0.48rem;
+  border-radius: 999px;
+  background-color: var(--bg-subtle);
+  color: var(--text-muted);
+  border: 1px solid var(--border-color);
+}
 
 .app-header {
   display: flex;

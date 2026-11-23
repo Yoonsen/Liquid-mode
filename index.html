@@ -6,14 +6,30 @@
   <meta name="color-scheme" content="light dark" />
   <meta name="text-scale" content="scale" />
   <title>Pixel-Liquid Mode — Universell leseflyt uten OCR</title>
-  <link rel="stylesheet" href="styles.css?v=5" />
+  <link rel="stylesheet" href="styles.css?v=6" />
 </head>
 <body>
+  <!-- OPPDATERINGSVARSEL (som i neo-dhlab: varsler når ny versjon er rullet ut på GitHub Pages) -->
+  <div id="update-banner" class="update-banner" role="status" aria-live="polite" hidden>
+    <div class="update-banner-text">
+      <span class="update-dot" aria-hidden="true"></span>
+      <strong id="update-banner-title">Ny versjon tilgjengelig!</strong>
+      <span id="update-banner-summary">En oppdatering av Pixel-Liquid Mode er klar.</span>
+    </div>
+    <div class="update-banner-actions">
+      <button type="button" id="update-reload-btn" class="primary-btn">Oppdater nå ↻</button>
+      <button type="button" id="update-dismiss-btn" class="mini-btn" aria-label="Lukk varsel">Senere</button>
+    </div>
+  </div>
+
   <header class="app-header">
     <div class="brand-group">
       <div class="brand-badge" aria-hidden="true">≈</div>
       <div>
-        <h1>Pixel-Liquid Mode</h1>
+        <div class="title-with-version">
+          <h1>Pixel-Liquid Mode</h1>
+          <span id="app-version-badge" class="version-pill" title="Installert versjon">v1.2.0</span>
+        </div>
         <p class="subtitle">Reflow av skannet tekst og IIIF-bøker på piksel-nivå — helt uten OCR</p>
       </div>
     </div>
@@ -154,9 +170,9 @@
         <div class="slider-group">
           <div class="slider-label-row">
             <label for="scale-slider">Tekststørrelse (Forstørring)</label>
-            <output id="scale-output" for="scale-slider">185%</output>
+            <output id="scale-output" for="scale-slider">125%</output>
           </div>
-          <input type="range" id="scale-slider" min="80" max="400" step="5" value="185" />
+          <input type="range" id="scale-slider" min="80" max="400" step="5" value="125" />
         </div>
 
         <div class="slider-group">
@@ -282,6 +298,6 @@
     </section>
   </main>
 
-  <script src="app.js?v=5" defer></script>
+  <script src="app.js?v=6" defer></script>
 </body>
 </html>

@@ -102,12 +102,16 @@
     smoothIterations: 3,   // 3 Chaikin-iterasjoner (høy kurve-glatting)
     preblurRadius: 0.0,    // 0.0 px sub-piksel utjevning (lav pre-blur bevarer skarpe detaljer)
     strokeOffset: 9,       // +9 blekkfylde-offset (fyldigere, mer lesbar strek)
-    scaleFactor: 1.85,
+    scaleFactor: 1.25,     // 125% moderat startforstørrelse (Liquid-flyten gjør allerede jobben!)
     spaceSensitivity: 1.0,
     contrastOffset: 0,
     lineGapMultiplier: 1.35,
     iiifBook: null, // { title, pages: [{ label, serviceId }], currentIndex }
   };
+
+  const APP_VERSION = "1.2.0";
+  const APP_RELEASE_SUMMARY =
+    "Snillere utsnittsmarg med dra-håndtak, oppretting av skjeve skanninger (Deskew), Renset blekk på papirtone, sveip-blading og 125% startforstørrelse.";
 
   // =========================================================================
   // 1. SYNTETISKE EKSEMPELSIDER & ÅPNE IIIF-KILDER (Nasjonalbiblioteket)
@@ -2358,6 +2362,81 @@
       b.classList.toggle("active", b.dataset.viewTarget === "liquid");
     });
   }
+
+  // =========================================================================
+  // 9. OPPDATERINGSMELDING (SOM I NEO-DHLAB)
+  // =========================================================================
+
+  function initUpdateNotification() {
+    const banner = document.getElementById("update-banner");
+    const titleEl = document.getElementById("update-banner-title");
+    const summaryEl = document.getElementById("update-banner-summary");
+    const reloadBtn = document.getElementById("update-reload-btn");
+    const dismissBtn = document.getElementById("update-dismiss-btn");
+    const versionBadge = document.getElementById("app-version-badge");
+
+    if (versionBadge) {
+      versionBadge.textContent = `v${APP_VERSION}`;
+    }
+    if (!banner) return;
+
+    const STORAGE_KEY = "pixel_liquid_seen_version";
+    try {
+      const lastSeen = localStorage.getItem(STORAGE_KEY);
+      if (lastSeen && lastSeen !== APP_VERSION) {
+        // Vis kvitteringsmelding når brukeren nettopp har lastet inn en nyere versjon
+        titleEl.textContent = `Oppdatert til v${APP_VERSION}!`;
+        summaryEl.textContent = APP_RELEASE_SUMMARY;
+        reloadBtn.hidden = true;
+        dismissBtn.textContent = "Flott!";
+        banner.removeAttribute("hidden");
+      }
+      localStorage.setItem(STORAGE_KEY, APP_VERSION);
+    } catch (_e) {
+      // Ignorer hvis localStorage er blokkert
+    }
+
+    reloadBtn.addEventListener("click", () => {
+      const url = new URL(window.location.href);
+      url.searchParams.set("v", String(Date.now()));
+      window.location.replace(url.toString());
+    });
+
+    dismissBtn.addEventListener("click", () => {
+      banner.setAttribute("hidden", "");
+    });
+
+    async function checkRemoteVersion() {
+      try {
+        const resp = await fetch(`version.json?t=${Date.now()}`, {
+          cache: "no-store",
+        });
+        if (!resp.ok) return;
+        const data = await resp.json();
+        if (data?.version && data.version !== APP_VERSION) {
+          titleEl.textContent = `Ny versjon (v${data.version}) er klar!`;
+          summaryEl.textContent =
+            data.summary || "En ny oppdatering er rullet ut på GitHub Pages.";
+          reloadBtn.hidden = false;
+          dismissBtn.textContent = "Senere";
+          banner.removeAttribute("hidden");
+        }
+      } catch (_err) {
+        // Ignorer nettverksfeil i bakgrunnssjekk
+      }
+    }
+
+    // Sjekk ved oppstart (etter 4 sek), når fanen får fokus igjen, og hvert 45. sekund
+    setTimeout(checkRemoteVersion, 4000);
+    setInterval(checkRemoteVersion, 45000);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") {
+        checkRemoteVersion();
+      }
+    });
+  }
+
+  initUpdateNotification();
 
   // Start med Knut Hamsuns Sult (1890) direkte fra Nasjonalbiblioteket IIIF
   // (med automatisk fallback til innebygd 1890-skanning dersom man er offline)
