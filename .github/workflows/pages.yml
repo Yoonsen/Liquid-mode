@@ -30,7 +30,7 @@ jobs:
           mkdir -p _site
           cp index.html styles.css app.js README.md LICENSE _site/
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v4
         with:
           path: "_site"
       - name: Deploy to GitHub Pages
