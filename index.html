@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="light dark" />
   <meta name="text-scale" content="scale" />
   <title>Pixel-Liquid Mode — Universell leseflyt uten OCR</title>
-  <link rel="stylesheet" href="styles.css?v=4" />
+  <link rel="stylesheet" href="styles.css?v=5" />
 </head>
 <body>
   <header class="app-header">
@@ -90,12 +90,20 @@
       <div class="panel-header">
         <div>
           <h2 id="source-heading">1. Originalbilde &amp; utsnitt</h2>
-          <p class="panel-hint">Dra en boks over en spalte eller et avsnitt for å lese kun det området.</p>
+          <p class="panel-hint">Dra i de blå kantene/hjørnene for å justere utsnittet, eller dra en ny boks.</p>
         </div>
         <div class="panel-actions toolbar">
+          <div class="deskew-pill" title="Rett opp skjeve skanninger (roter ±7 grader)">
+            <label for="deskew-slider">Rett opp:</label>
+            <input type="range" id="deskew-slider" min="-7" max="7" step="0.25" value="0" />
+            <output id="deskew-output" for="deskew-slider">0.0°</output>
+            <button type="button" id="auto-deskew-btn" class="mini-btn" title="Finn beste linjevinkel automatisk">
+              Auto
+            </button>
+          </div>
           <label class="checkbox-label" for="show-boxes-toggle">
             <input type="checkbox" id="show-boxes-toggle" checked />
-            <span>Vis funnede ord</span>
+            <span>Vis ord</span>
           </label>
           <button type="button" id="reset-crop-btn" class="secondary-btn" disabled>
             Hele siden
@@ -118,28 +126,31 @@
     </section>
 
     <!-- HØYRE PANEL: LIQUID MODE LESER -->
-    <section class="panel liquid-panel" aria-labelledby="liquid-heading">
-      <div class="panel-header">
+    <section class="panel liquid-panel" id="liquid-panel" aria-labelledby="liquid-heading">
+      <div class="panel-header reader-collapsible-ui">
         <div>
           <h2 id="liquid-heading">2. Liquid Mode (Leseflate)</h2>
-          <p class="panel-hint">Ordene nedenfor er ekte piksel-utklipp som bryter automatisk til skjermbredden din.</p>
+          <p class="panel-hint">Trykk i leseflaten for å skjule/vise menyer • Sveip venstre/høyre for å bla</p>
         </div>
 
         <div class="theme-pills" role="group" aria-label="Visningsfilter for ord-piksler">
-          <button type="button" class="pill-btn active" data-render-mode="paper" aria-pressed="true">
-            Originalt papir
+          <button type="button" class="pill-btn active" data-render-mode="clean" aria-pressed="true">
+            Renset blekk (Papirtone)
           </button>
-          <button type="button" class="pill-btn" data-render-mode="clean" aria-pressed="false">
-            Renset blekk
+          <button type="button" class="pill-btn" data-render-mode="paper" aria-pressed="false">
+            Originalt utklipp
           </button>
           <button type="button" class="pill-btn" data-render-mode="dark" aria-pressed="false">
-            Nattmodus (Invertert)
+            Nattmodus
+          </button>
+          <button type="button" id="zen-toggle-btn" class="pill-btn zen-btn" aria-pressed="false" title="Skjul/vis menyer (eller trykk i tomrom i leseflaten)">
+            ⛶ Lesemodus
           </button>
         </div>
       </div>
 
       <!-- KONTROLLER FOR FORSTØRRING OG SEGMENTERING -->
-      <div class="controls-bar" role="region" aria-label="Lesekontroller og ordskille-finjustering">
+      <div class="controls-bar reader-collapsible-ui" role="region" aria-label="Lesekontroller og ordskille-finjustering">
         <div class="slider-group">
           <div class="slider-label-row">
             <label for="scale-slider">Tekststørrelse (Forstørring)</label>
@@ -174,7 +185,7 @@
       </div>
 
       <!-- SAMMENLEGGBAR SKUFF (FLIS / PIL) FOR AVANSERT TRACING, LUPER OG TERSKEL -->
-      <details class="trace-lab-details" id="trace-lab-details">
+      <details class="trace-lab-details reader-collapsible-ui" id="trace-lab-details">
         <summary class="trace-lab-summary">
           <div class="trace-title-group">
             <span class="disclosure-chevron" aria-hidden="true">▸</span>
@@ -248,10 +259,17 @@
         </div>
       </details>
 
+      <!-- FLYTENDE MINIBAR SOM VISES NÅR MENYER ER SKJULT MED TRYKK (ZEN / MOBIL LESEMODUS) -->
+      <div id="zen-floating-bar" class="zen-floating-bar" hidden>
+        <span id="zen-page-indicator" class="zen-page-indicator">Lesemodus</span>
+        <span class="zen-hint">Trykk i leseflaten for menyer • Sveip for å bla</span>
+        <button type="button" id="zen-restore-btn" class="mini-btn">Vis menyer ▾</button>
+      </div>
+
       <!-- SELVE LIQUID-FLATEN DER ORD-BILDENE WRAPPER -->
       <div
         id="liquid-reader"
-        class="liquid-reader mode-paper"
+        class="liquid-reader mode-clean"
         tabindex="0"
         role="region"
         aria-label="Flytende piksel-tekst"
@@ -259,11 +277,11 @@
 
       <footer class="panel-footer reader-footer">
         <span class="tip-badge">Tips:</span>
-        <span>Hold musepekeren over (eller trykk på) et ord i leseren for å se hvor det befinner seg i originalbildet!</span>
+        <span>Trykk på bakgrunnen i leseflaten for å vise/skjule menyer. Sveip til venstre/høyre for å bla i boken!</span>
       </footer>
     </section>
   </main>
 
-  <script src="app.js?v=4" defer></script>
+  <script src="app.js?v=5" defer></script>
 </body>
 </html>

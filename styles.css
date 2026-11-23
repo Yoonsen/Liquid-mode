@@ -788,6 +788,7 @@ kbd {
 .liquid-reader {
   --liquid-line-gap: 0.65rem;
   --liquid-word-gap: 0.55rem;
+  --sampled-paper-bg: #f6efe0;
   padding: clamp(1rem, 2.5cqi, 2rem);
   min-block-size: 26rem;
   max-block-size: 74vh;
@@ -798,22 +799,109 @@ kbd {
   align-content: flex-start;
   row-gap: var(--liquid-line-gap);
   column-gap: var(--liquid-word-gap);
-  transition: background-color 0.2s ease;
+  transition: background-color 0.2s ease, max-block-size 0.2s ease;
+  touch-action: pan-y;
 }
 
 .liquid-reader.mode-paper {
-  background-color: #f7f2e4;
+  background-color: var(--sampled-paper-bg, #f7f2e4);
   color: #1c1915;
 }
 
 .liquid-reader.mode-clean {
-  background-color: #ffffff;
-  color: #0f172a;
+  background-color: var(--sampled-paper-bg, #f7f2e4);
+  color: #141923;
 }
 
 .liquid-reader.mode-dark {
   background-color: #101318;
   color: #f8fafc;
+}
+
+/* ==========================================================================
+   Deskew-pille og Lesemodus (trykk i leseflaten for å skjule/vise menyer)
+   ========================================================================== */
+
+.deskew-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 0.5rem;
+  background-color: var(--bg-subtle);
+  border: 1px solid var(--border-color);
+  font-size: 0.8rem;
+}
+
+.deskew-pill label {
+  font-weight: 600;
+}
+
+.deskew-pill input[type="range"] {
+  inline-size: 4.5rem;
+}
+
+.deskew-pill output {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  color: var(--brand-color);
+  min-inline-size: 2.3rem;
+}
+
+.mini-btn {
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 700;
+  padding: 0.2rem 0.5rem;
+  border-radius: 0.35rem;
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-panel);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.mini-btn:hover {
+  background-color: var(--brand-color);
+  color: var(--brand-contrast);
+  border-color: transparent;
+}
+
+.zen-floating-bar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.9rem;
+  background-color: var(--bg-subtle);
+  border-bottom: 1px solid var(--border-color);
+  font-size: 0.8rem;
+}
+
+.zen-floating-bar[hidden] {
+  display: none;
+}
+
+.zen-page-indicator {
+  font-weight: 700;
+  color: var(--brand-color);
+}
+
+.zen-hint {
+  color: var(--text-muted);
+  font-size: 0.76rem;
+}
+
+/* Når brukeren trykker i leseflaten (menus-collapsed), skjules verktøylinjer for full leseflate */
+body.menus-collapsed .app-header,
+body.menus-collapsed .iiif-book-bar,
+body.menus-collapsed .mobile-view-tabs,
+body.menus-collapsed .reader-collapsible-ui {
+  display: none !important;
+}
+
+body.menus-collapsed .liquid-reader {
+  max-block-size: 88vh;
 }
 
 /* Avsnittsskille når originalen har ekstra stor linjeavstand */

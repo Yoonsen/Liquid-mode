@@ -42,6 +42,14 @@
 
   const showBoxesToggle = document.getElementById("show-boxes-toggle");
   const resetCropBtn = document.getElementById("reset-crop-btn");
+  const deskewSlider = document.getElementById("deskew-slider");
+  const deskewOutput = document.getElementById("deskew-output");
+  const autoDeskewBtn = document.getElementById("auto-deskew-btn");
+
+  const zenToggleBtn = document.getElementById("zen-toggle-btn");
+  const zenFloatingBar = document.getElementById("zen-floating-bar");
+  const zenPageIndicator = document.getElementById("zen-page-indicator");
+  const zenRestoreBtn = document.getElementById("zen-restore-btn");
 
   const scaleSlider = document.getElementById("scale-slider");
   const scaleOutput = document.getElementById("scale-output");
@@ -72,17 +80,24 @@
   const mobileTabButtons = document.querySelectorAll("[data-view-target]");
   const workspaceGrid = document.getElementById("workspace-grid");
 
-  // Applikasjonstilstand (optimaliserte standardverdier: høy glatting, lav pre-blur, god blekkfylde)
+  // Offscreen original-canvas (urotert) slik at Deskew/rotasjon aldri taper skarphet
+  const rawMasterCanvas = document.createElement("canvas");
+  const rawMasterCtx = rawMasterCanvas.getContext("2d", { willReadFrequently: true });
+
+  // Applikasjonstilstand (optimaliserte standardverdier: Renset blekk på papirtone, høy glatting, lav pre-blur, god blekkfylde)
   const state = {
-    sourceImageData: null, // Full ImageData fra sourceCanvas
+    sourceImageData: null, // Full ImageData fra sourceCanvas (etter ev. deskew)
     gray: null,            // Uint8Array gråtoner for hele bildet
     otsuThreshold: 140,    // Automatisk beregnet terskel
+    sampledPaperHex: "#f6efe0", // Automatisk målt papirfarge fra originalen
+    deskewAngle: 0,        // Rotasjonsvinkel i grader (-7 .. +7)
     cropRect: null,        // { x, y, w, h } i bildepiksler, eller null for hele bildet
+    savedCropRatio: null,  // Husker brukerens relative utsnitt { rx, ry, rw, rh } mellom bok-sider
     detectedLines: [],     // [{ yTop, yBottom, yCore, isParagraphStart, words: [...] }]
     detectedWords: [],     // Flatt liste med alle ord-objekter
     hoveredWordId: null,
     selectedWord: null,
-    renderMode: "paper",   // 'paper' | 'clean' | 'dark'
+    renderMode: "clean",   // 'clean' (standard!) | 'paper' | 'dark'
     traceMode: "vector",   // 'raw' | 'superres' | 'vector' | 'wireframe'
     smoothIterations: 3,   // 3 Chaikin-iterasjoner (høy kurve-glatting)
     preblurRadius: 0.0,    // 0.0 px sub-piksel utjevning (lav pre-blur bevarer skarpe detaljer)
@@ -278,6 +293,16 @@
     // 4. Litt avsluttende trykksværte-ujevnhet
     addInkTexture(sourceCtx, width, height);
 
+    // Lagre urotert master-kopi for deskew
+    rawMasterCanvas.width = width;
+    rawMasterCanvas.height = height;
+    rawMasterCtx.drawImage(sourceCanvas, 0, 0);
+    state.deskewAngle = 0;
+    if (deskewSlider) {
+      deskewSlider.value = "0";
+      deskewOutput.textContent = "0.0°";
+    }
+
     state.iiifBook = null;
     iiifBookBar.setAttribute("hidden", "");
 
@@ -361,23 +386,42 @@
       sourceCtx.fillRect(0, 0, targetW, targetH);
       sourceCtx.drawImage(img, 0, 0, targetW, targetH);
 
-      // Dersom vi er inne i en IIIF-bok fra NB.no, sett automatisk et
-      // innholds-utsnitt (8% marg rundt) så svarte skanningskanter/bokrygg ikke
-      // slår sammen linjene — brukeren kan når som helst dra sitt eget utsnitt
-      // eller trykke "Hele siden".
+      // Lagre urotert master-kopi for tapsfri deskew
+      rawMasterCanvas.width = targetW;
+      rawMasterCanvas.height = targetH;
+      rawMasterCtx.drawImage(sourceCanvas, 0, 0);
+      state.deskewAngle = 0;
+      if (deskewSlider) {
+        deskewSlider.value = "0";
+        deskewOutput.textContent = "0.0°";
+      }
+
+      // Hvis brukeren allerede har justert utsnittet i en bok, behold det relative utsnittet
+      // mellom sidene! Ellers bruk en svært snill 2.5% ytterkant på IIIF-bøker slik at
+      // første/siste ord aldri klippes bort på pocketbøker.
       if (state.iiifBook) {
-        state.cropRect = {
-          x: Math.round(targetW * 0.08),
-          y: Math.round(targetH * 0.07),
-          w: Math.round(targetW * 0.84),
-          h: Math.round(targetH * 0.84),
-        };
+        if (state.savedCropRatio) {
+          state.cropRect = {
+            x: Math.round(targetW * state.savedCropRatio.rx),
+            y: Math.round(targetH * state.savedCropRatio.ry),
+            w: Math.round(targetW * state.savedCropRatio.rw),
+            h: Math.round(targetH * state.savedCropRatio.rh),
+          };
+        } else {
+          state.cropRect = {
+            x: Math.round(targetW * 0.025),
+            y: Math.round(targetH * 0.035),
+            w: Math.round(targetW * 0.95),
+            h: Math.round(targetH * 0.93),
+          };
+        }
         resetCropBtn.disabled = false;
       } else {
         state.cropRect = null;
         resetCropBtn.disabled = true;
       }
       ingestCanvasSource();
+      liquidReader.scrollTop = 0;
     };
 
     img.onerror = () => {
@@ -674,7 +718,133 @@
     state.gray = gray;
     state.otsuThreshold = computeOtsuThreshold(hist, w * h);
 
+    // Mål den faktiske papirfargen fra lyse bakgrunnspiksler midt på siden
+    // slik at "Renset blekk (Papirtone)" får samme behagelige varme bakgrunn som originalen!
+    let sumR = 0;
+    let sumG = 0;
+    let sumB = 0;
+    let countPaper = 0;
+    const sampleStep = Math.max(4, Math.floor((w * h) / 4000));
+    const paperCutoff = Math.min(245, state.otsuThreshold + 18);
+
+    for (let p = 0; p < gray.length; p += sampleStep) {
+      if (gray[p] >= paperCutoff) {
+        const idx = p * 4;
+        sumR += rgba[idx];
+        sumG += rgba[idx + 1];
+        sumB += rgba[idx + 2];
+        countPaper++;
+      }
+    }
+
+    if (countPaper > 20) {
+      // Bland 82% målt papirfarge med 18% varm kremhvit (#faf6ed) så den alltid er behagelig og ren
+      const r = Math.round((sumR / countPaper) * 0.82 + 250 * 0.18);
+      const g = Math.round((sumG / countPaper) * 0.82 + 246 * 0.18);
+      const b = Math.round((sumB / countPaper) * 0.82 + 237 * 0.18);
+      state.sampledPaperHex = `rgb(${r}, ${g}, ${b})`;
+    } else {
+      state.sampledPaperHex = "#f6efe0";
+    }
+    liquidReader.style.setProperty("--sampled-paper-bg", state.sampledPaperHex);
+
     runSegmentationAndRender();
+  }
+
+  /**
+   * Roterer kilde-canvaset (fra tapsfri rawMasterCanvas) med angleDeg grader
+   * for å rette opp skjeve pocketbok-skanninger eller mobilbilder.
+   */
+  function applyDeskewRotation(angleDeg) {
+    if (!rawMasterCanvas.width || !rawMasterCanvas.height) return;
+    state.deskewAngle = angleDeg;
+    if (deskewSlider) {
+      deskewSlider.value = String(angleDeg);
+      deskewOutput.textContent = `${angleDeg > 0 ? "+" : ""}${angleDeg.toFixed(1)}°`;
+    }
+
+    const w = rawMasterCanvas.width;
+    const h = rawMasterCanvas.height;
+    sourceCtx.save();
+    sourceCtx.fillStyle = state.sampledPaperHex || "#f6efe0";
+    sourceCtx.fillRect(0, 0, w, h);
+    sourceCtx.translate(w / 2, h / 2);
+    sourceCtx.rotate((angleDeg * Math.PI) / 180);
+    sourceCtx.drawImage(rawMasterCanvas, -w / 2, -h / 2);
+    sourceCtx.restore();
+
+    ingestCanvasSource();
+  }
+
+  /**
+   * Finner automatisk den rotasjonsvinkelen (-5.5° .. +5.5°) som gir skarpest
+   * horisontal linjeseparasjon (maksimal varians i horisontal projeksjonsprofil).
+   */
+  function autoDetectSkewAngle() {
+    if (!rawMasterCanvas.width || !state.gray) return;
+    const w = sourceCanvas.width;
+    const h = sourceCanvas.height;
+    const roi = state.cropRect || {
+      x: Math.round(w * 0.1),
+      y: Math.round(h * 0.1),
+      w: Math.round(w * 0.8),
+      h: Math.round(h * 0.8),
+    };
+
+    // Hent uroterte gråtoner fra rawMasterCanvas
+    const rawData = rawMasterCtx.getImageData(0, 0, w, h).data;
+    const rawGray = new Uint8Array(w * h);
+    for (let i = 0, p = 0; i < rawData.length; i += 4, p++) {
+      rawGray[p] = (rawData[i] * 77 + rawData[i + 1] * 150 + rawData[i + 2] * 29) >> 8;
+    }
+
+    const thresh = state.otsuThreshold;
+    const cx = w * 0.5;
+    const cy = h * 0.5;
+    const x0 = Math.max(0, Math.round(roi.x));
+    const x1 = Math.min(w - 1, Math.round(roi.x + roi.w));
+    const y0 = Math.max(0, Math.round(roi.y));
+    const y1 = Math.min(h - 1, Math.round(roi.y + roi.h));
+    const roiH = Math.max(1, y1 - y0);
+
+    let bestAngle = 0;
+    let bestScore = -1;
+
+    // Søk med 0.25 graders oppløsning fra -5.5° til +5.5°
+    for (let deg = -5.5; deg <= 5.5; deg += 0.25) {
+      const rad = (-deg * Math.PI) / 180;
+      const cosA = Math.cos(rad);
+      const sinA = Math.sin(rad);
+      const rowHist = new Uint16Array(roiH);
+
+      // Sample hver 2. piksel i x og y for lynraskt søk (< 15 ms)
+      for (let y = y0; y < y1; y += 2) {
+        const dy = y - cy;
+        for (let x = x0; x < x1; x += 2) {
+          if (rawGray[y * w + x] < thresh) {
+            const dx = x - cx;
+            const rotY = Math.round( -dx * sinA + dy * cosA + cy ) - y0;
+            if (rotY >= 0 && rotY < roiH) {
+              rowHist[rotY]++;
+            }
+          }
+        }
+      }
+
+      // Beregn summen av kvadrerte rad-forskjeller (høyest når tekstlinjer og mellomrom er helt horisontale)
+      let score = 0;
+      for (let r = 1; r < roiH; r++) {
+        const diff = rowHist[r] - rowHist[r - 1];
+        score += diff * diff;
+      }
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestAngle = deg;
+      }
+    }
+
+    applyDeskewRotation(bestAngle);
   }
 
   function computeOtsuThreshold(hist, totalPixels) {
@@ -978,6 +1148,28 @@
       overlayCtx.lineWidth = 2.5;
       overlayCtx.setLineDash([6, 4]);
       overlayCtx.strokeRect(crop.x, crop.y, crop.w, crop.h);
+      overlayCtx.setLineDash([]);
+
+      // Tegn 8 tydelige dra-håndtak (4 hjørner + 4 sidekanter) slik at brukeren
+      // enkelt kan dra venstre/høyre/øvre/nedre kant ut eller inn!
+      const handlePts = [
+        { x: crop.x, y: crop.y },
+        { x: crop.x + crop.w * 0.5, y: crop.y },
+        { x: crop.x + crop.w, y: crop.y },
+        { x: crop.x + crop.w, y: crop.y + crop.h * 0.5 },
+        { x: crop.x + crop.w, y: crop.y + crop.h },
+        { x: crop.x + crop.w * 0.5, y: crop.y + crop.h },
+        { x: crop.x, y: crop.y + crop.h },
+        { x: crop.x, y: crop.y + crop.h * 0.5 },
+      ];
+      const hs = Math.max(8, Math.round(Math.min(w, h) * 0.013));
+      overlayCtx.fillStyle = "#ffffff";
+      overlayCtx.strokeStyle = "#1d4ed8";
+      overlayCtx.lineWidth = 2.5;
+      for (const hp of handlePts) {
+        overlayCtx.fillRect(hp.x - hs, hp.y - hs, hs * 2, hs * 2);
+        overlayCtx.strokeRect(hp.x - hs, hp.y - hs, hs * 2, hs * 2);
+      }
       overlayCtx.restore();
     }
 
@@ -1633,11 +1825,13 @@
   }
 
   // =========================================================================
-  // 6. INTERAKTIV UTSNITTSMARKERING (DRA BOKS RUNDT SPALTE/AVSNITT)
+  // 6. INTERAKTIV UTSNITTSMARKERING (DRA I KANTER/HJØRNER ELLER NY BOKS)
   // =========================================================================
 
   let isDraggingCrop = false;
+  let dragMode = "new"; // 'new' | 'w' | 'e' | 'n' | 's' | 'nw' | 'ne' | 'sw' | 'se'
   let dragStartPt = null;
+  let initialCropSnapshot = null;
 
   function clientToCanvasCoords(clientX, clientY) {
     const rect = sourceCanvas.getBoundingClientRect();
@@ -1649,22 +1843,116 @@
     };
   }
 
+  /**
+   * Sjekker om brukeren trykker på en av kantene eller hjørnene til eksisterende utsnitt.
+   */
+  function hitTestCropEdges(pt, crop) {
+    if (!crop) return "new";
+    const rect = sourceCanvas.getBoundingClientRect();
+    const scale = sourceCanvas.width / Math.max(1, rect.width);
+    // 22 CSS-pikslers treffsone rundt kantene/hjørnene (enkelt både med mus og finger)
+    const tol = Math.max(18, 22 * scale);
+
+    const nearLeft =
+      Math.abs(pt.x - crop.x) <= tol &&
+      pt.y >= crop.y - tol &&
+      pt.y <= crop.y + crop.h + tol;
+    const nearRight =
+      Math.abs(pt.x - (crop.x + crop.w)) <= tol &&
+      pt.y >= crop.y - tol &&
+      pt.y <= crop.y + crop.h + tol;
+    const nearTop =
+      Math.abs(pt.y - crop.y) <= tol &&
+      pt.x >= crop.x - tol &&
+      pt.x <= crop.x + crop.w + tol;
+    const nearBottom =
+      Math.abs(pt.y - (crop.y + crop.h)) <= tol &&
+      pt.x >= crop.x - tol &&
+      pt.x <= crop.x + crop.w + tol;
+
+    if (nearTop && nearLeft) return "nw";
+    if (nearTop && nearRight) return "ne";
+    if (nearBottom && nearLeft) return "sw";
+    if (nearBottom && nearRight) return "se";
+    if (nearLeft) return "w";
+    if (nearRight) return "e";
+    if (nearTop) return "n";
+    if (nearBottom) return "s";
+    return "new";
+  }
+
+  function computeResizedCrop(mode, startCrop, currPt) {
+    let left = startCrop.x;
+    let right = startCrop.x + startCrop.w;
+    let top = startCrop.y;
+    let bottom = startCrop.y + startCrop.h;
+
+    if (mode.includes("w")) left = Math.min(right - 30, currPt.x);
+    if (mode.includes("e")) right = Math.max(left + 30, currPt.x);
+    if (mode.includes("n")) top = Math.min(bottom - 30, currPt.y);
+    if (mode.includes("s")) bottom = Math.max(top + 30, currPt.y);
+
+    return {
+      x: Math.max(0, left),
+      y: Math.max(0, top),
+      w: Math.min(sourceCanvas.width - left, right - left),
+      h: Math.min(sourceCanvas.height - top, bottom - top),
+    };
+  }
+
+  function rememberCropRatio(rect) {
+    if (!rect || !sourceCanvas.width || !sourceCanvas.height) {
+      state.savedCropRatio = null;
+      return;
+    }
+    state.savedCropRatio = {
+      rx: rect.x / sourceCanvas.width,
+      ry: rect.y / sourceCanvas.height,
+      rw: rect.w / sourceCanvas.width,
+      rh: rect.h / sourceCanvas.height,
+    };
+  }
+
   canvasWrapper.addEventListener("pointerdown", (e) => {
     if (e.button !== 0 && e.pointerType === "mouse") return;
     canvasWrapper.setPointerCapture(e.pointerId);
     isDraggingCrop = true;
     dragStartPt = clientToCanvasCoords(e.clientX, e.clientY);
+    dragMode = hitTestCropEdges(dragStartPt, state.cropRect);
+    initialCropSnapshot = state.cropRect ? { ...state.cropRect } : null;
   });
 
   canvasWrapper.addEventListener("pointermove", (e) => {
-    if (!isDraggingCrop || !dragStartPt) return;
     const curr = clientToCanvasCoords(e.clientX, e.clientY);
-    const dragRect = {
-      x: Math.min(dragStartPt.x, curr.x),
-      y: Math.min(dragStartPt.y, curr.y),
-      w: Math.abs(curr.x - dragStartPt.x),
-      h: Math.abs(curr.y - dragStartPt.y),
-    };
+    if (!isDraggingCrop || !dragStartPt) {
+      // Oppdater musepeker når man hovrer over en utsnittskant
+      const hoverEdge = hitTestCropEdges(curr, state.cropRect);
+      const cursorMap = {
+        nw: "nwse-resize",
+        se: "nwse-resize",
+        ne: "nesw-resize",
+        sw: "nesw-resize",
+        w: "ew-resize",
+        e: "ew-resize",
+        n: "ns-resize",
+        s: "ns-resize",
+        new: "crosshair",
+      };
+      canvasWrapper.style.cursor = cursorMap[hoverEdge] || "crosshair";
+      return;
+    }
+
+    let dragRect;
+    if (dragMode !== "new" && initialCropSnapshot) {
+      dragRect = computeResizedCrop(dragMode, initialCropSnapshot, curr);
+    } else {
+      dragRect = {
+        x: Math.min(dragStartPt.x, curr.x),
+        y: Math.min(dragStartPt.y, curr.y),
+        w: Math.abs(curr.x - dragStartPt.x),
+        h: Math.abs(curr.y - dragStartPt.y),
+      };
+    }
     drawOverlayBoxes(dragRect);
   });
 
@@ -1672,30 +1960,54 @@
     if (!isDraggingCrop || !dragStartPt) return;
     isDraggingCrop = false;
     const curr = clientToCanvasCoords(e.clientX, e.clientY);
-    const w = Math.abs(curr.x - dragStartPt.x);
-    const h = Math.abs(curr.y - dragStartPt.y);
 
-    // Krev minst 25x25 piksler for å aktivere nytt utsnitt
-    if (w >= 25 && h >= 25) {
-      state.cropRect = {
-        x: Math.min(dragStartPt.x, curr.x),
-        y: Math.min(dragStartPt.y, curr.y),
-        w,
-        h,
-      };
+    if (dragMode !== "new" && initialCropSnapshot) {
+      state.cropRect = computeResizedCrop(dragMode, initialCropSnapshot, curr);
+      rememberCropRatio(state.cropRect);
       resetCropBtn.disabled = false;
       runSegmentationAndRender();
     } else {
-      drawOverlayBoxes();
+      const w = Math.abs(curr.x - dragStartPt.x);
+      const h = Math.abs(curr.y - dragStartPt.y);
+      // Krev minst 25x25 piksler for å aktivere nytt utsnitt
+      if (w >= 25 && h >= 25) {
+        state.cropRect = {
+          x: Math.min(dragStartPt.x, curr.x),
+          y: Math.min(dragStartPt.y, curr.y),
+          w,
+          h,
+        };
+        rememberCropRatio(state.cropRect);
+        resetCropBtn.disabled = false;
+        runSegmentationAndRender();
+      } else {
+        drawOverlayBoxes();
+      }
     }
     dragStartPt = null;
+    initialCropSnapshot = null;
   });
 
   resetCropBtn.addEventListener("click", () => {
     state.cropRect = null;
+    state.savedCropRatio = { rx: 0, ry: 0, rw: 1, rh: 1 };
     resetCropBtn.disabled = true;
     runSegmentationAndRender();
   });
+
+  // Deskew / oppretting av skjeve skanninger
+  if (deskewSlider) {
+    deskewSlider.addEventListener("input", () => {
+      const deg = Number(deskewSlider.value);
+      applyDeskewRotation(deg);
+    });
+  }
+
+  if (autoDeskewBtn) {
+    autoDeskewBtn.addEventListener("click", () => {
+      autoDetectSkewAngle();
+    });
+  }
 
   // =========================================================================
   // 7. HENDELSESLYTTERE FOR KONTROLLER, OPPLASTING OG UTKLIPPSTAVLE
@@ -1918,6 +2230,134 @@
       workspaceGrid.dataset.activeView = btn.dataset.viewTarget;
     });
   });
+
+  // =========================================================================
+  // 8. MOBILVENNLIG LESEMODUS: TRYKK FOR MENYER & SVEIP FOR NESTE/FORRIGE SIDE
+  // =========================================================================
+
+  function updateZenPageLabel() {
+    if (!zenPageIndicator) return;
+    if (state.iiifBook) {
+      const page = state.iiifBook.pages[state.iiifBook.currentIndex];
+      zenPageIndicator.textContent = `${state.iiifBook.title} • ${page ? page.label : ""}`;
+    } else {
+      zenPageIndicator.textContent = "Lesemodus";
+    }
+  }
+
+  function toggleReaderMenus(forceCollapsed = null) {
+    const isCollapsed =
+      typeof forceCollapsed === "boolean"
+        ? forceCollapsed
+        : !document.body.classList.contains("menus-collapsed");
+
+    document.body.classList.toggle("menus-collapsed", isCollapsed);
+    if (zenFloatingBar) {
+      if (isCollapsed) {
+        updateZenPageLabel();
+        zenFloatingBar.removeAttribute("hidden");
+      } else {
+        zenFloatingBar.setAttribute("hidden", "");
+      }
+    }
+    if (zenToggleBtn) {
+      zenToggleBtn.classList.toggle("active", isCollapsed);
+      zenToggleBtn.setAttribute("aria-pressed", isCollapsed ? "true" : "false");
+    }
+  }
+
+  if (zenToggleBtn) {
+    zenToggleBtn.addEventListener("click", () => toggleReaderMenus());
+  }
+  if (zenRestoreBtn) {
+    zenRestoreBtn.addEventListener("click", () => toggleReaderMenus(false));
+  }
+
+  function turnBookPage(delta) {
+    if (!state.iiifBook) return false;
+    const nextIdx = state.iiifBook.currentIndex + delta;
+    if (nextIdx < 0 || nextIdx >= state.iiifBook.pages.length) return false;
+    state.iiifBook.currentIndex = nextIdx;
+    loadCurrentIiifBookPage();
+    updateZenPageLabel();
+    return true;
+  }
+
+  // Sveip (venstre/høyre, eller opp ved bunnen / ned ved toppen) og trykk for menyer i leseflaten
+  let touchStartX = 0;
+  let touchStartY = 0;
+  let touchStartTime = 0;
+  let wasAtTopOnTouchStart = false;
+  let wasAtBottomOnTouchStart = false;
+
+  liquidReader.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0 && e.pointerType === "mouse") return;
+    touchStartX = e.clientX;
+    touchStartY = e.clientY;
+    touchStartTime = performance.now();
+    wasAtTopOnTouchStart = liquidReader.scrollTop <= 6;
+    wasAtBottomOnTouchStart =
+      liquidReader.scrollTop + liquidReader.clientHeight >=
+      liquidReader.scrollHeight - 8;
+  });
+
+  liquidReader.addEventListener("pointerup", (e) => {
+    const dx = e.clientX - touchStartX;
+    const dy = e.clientY - touchStartY;
+    const absX = Math.abs(dx);
+    const absY = Math.abs(dy);
+    const dt = performance.now() - touchStartTime;
+
+    // 1. Horisontalt sveip (venstre = neste side, høyre = forrige side)
+    if (absX >= 58 && absX > absY * 1.35 && dt < 850) {
+      if (dx < 0) {
+        turnBookPage(1); // Sveip mot venstre -> Neste side
+      } else {
+        turnBookPage(-1); // Sveip mot høyre -> Forrige side
+      }
+      return;
+    }
+
+    // 2. Vertikalt sveip når brukeren allerede er helt nederst eller øverst i leseflaten
+    if (absY >= 85 && absY > absX * 1.4 && dt < 750) {
+      if (dy < 0 && wasAtBottomOnTouchStart) {
+        turnBookPage(1); // Sveip opp fra bunnen -> Neste side
+        return;
+      }
+      if (dy > 0 && wasAtTopOnTouchStart) {
+        turnBookPage(-1); // Sveip ned fra toppen -> Forrige side
+        return;
+      }
+    }
+
+    // 3. Kort trykk på bakgrunnen i leseflaten (utenom når brukeren klikker på et ord for lupe)
+    // veksler menyer av/på!
+    if (absX < 12 && absY < 12 && dt < 350) {
+      const clickedWord = e.target.closest(".word-token");
+      if (!clickedWord) {
+        toggleReaderMenus();
+      }
+    }
+  });
+
+  // Piltaster venstre/høyre for å bla når fokus ikke er i et input-felt
+  window.addEventListener("keydown", (e) => {
+    const tag = document.activeElement?.tagName;
+    if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
+    if (e.key === "ArrowRight") {
+      if (turnBookPage(1)) e.preventDefault();
+    } else if (e.key === "ArrowLeft") {
+      if (turnBookPage(-1)) e.preventDefault();
+    }
+  });
+
+  // På smale mobilskjermer: start gjerne direkte i Liquid-leseren
+  if (window.innerWidth < 680) {
+    workspaceGrid.dataset.activeView = "liquid";
+    mobileTabButtons.forEach((b) => {
+      b.classList.toggle("active", b.dataset.viewTarget === "liquid");
+    });
+  }
 
   // Start med Knut Hamsuns Sult (1890) direkte fra Nasjonalbiblioteket IIIF
   // (med automatisk fallback til innebygd 1890-skanning dersom man er offline)
