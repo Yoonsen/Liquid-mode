@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="nb">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="color-scheme" content="light dark" />
+  <meta name="text-scale" content="scale" />
+  <title>Pixel-Liquid Mode — Universell leseflyt uten OCR</title>
+  <link rel="stylesheet" href="styles.css?v=4" />
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand-group">
+      <div class="brand-badge" aria-hidden="true">≈</div>
+      <div>
+        <h1>Pixel-Liquid Mode</h1>
+        <p class="subtitle">Reflow av skannet tekst og IIIF-bøker på piksel-nivå — helt uten OCR</p>
+      </div>
+    </div>
+
+    <div class="source-toolbar toolbar" role="region" aria-label="Bildevelger og kilder">
+      <div class="control-pill">
+        <label for="preset-select">Kilde:</label>
+        <select id="preset-select">
+          <option value="nb-hamsun-sult">Knut Hamsun: Sult (1890) — NB.no IIIF (Åpningsside)</option>
+          <option value="synthetic-gothic">1890 Fraktur / Avissats (Innebygd demo)</option>
+          <option value="synthetic-mobile">Småskrift-skjermbilde / Brev (Innebygd demo)</option>
+          <option value="synthetic-twocol">To-spalters artikkel — test spaltemarkering (Innebygd demo)</option>
+        </select>
+      </div>
+
+      <label class="file-upload-btn" for="file-input">
+        <span aria-hidden="true">📷</span>
+        <span>Last opp / Ta bilde</span>
+        <input type="file" id="file-input" accept="image/*" />
+      </label>
+
+      <button type="button" id="toggle-iiif-btn" class="secondary-btn" aria-expanded="false" aria-controls="iiif-drawer">
+        IIIF / NB.no URN
+      </button>
+    </div>
+  </header>
+
+  <section id="iiif-drawer" class="iiif-drawer" hidden>
+    <form id="iiif-form" class="iiif-form">
+      <div class="iiif-input-row">
+        <label for="iiif-url-input">NB.no-lenke, URN eller IIIF-URL:</label>
+        <input
+          type="text"
+          id="iiif-url-input"
+          value="https://urn.nb.no/URN:NBN:no-nb_digibok_2015051929001"
+          placeholder="https://urn.nb.no/URN:NBN:no-nb_digibok_2015051929001 eller IIIF-manifest"
+          required
+        />
+        <button type="submit" class="primary-btn">Hent fra NB / IIIF</button>
+      </div>
+      <p class="helper-text">
+        Lim inn en <code>https://urn.nb.no/URN:NBN:no-nb_...</code>-lenke, en bar <code>URN:NBN:...</code>, en <code>nb.no/items/...</code>-lenke eller en direkte IIIF-manifest/bilde-URL. For fritt tilgjengelige bøker henter vi hele sidemanifestet slik at du kan bla fra side til side!
+      </p>
+    </form>
+  </section>
+
+  <!-- IIIF BOK-NAVIGATOR (vises automatisk når en bok fra NB.no / IIIF-manifest er lastet) -->
+  <section id="iiif-book-bar" class="iiif-book-bar toolbar" hidden aria-label="IIIF Boknavigering">
+    <div class="book-meta">
+      <span class="iiif-pill">IIIF</span>
+      <strong id="book-title-label">Sult — Knut Hamsun (1890)</strong>
+      <span id="book-access-label" class="book-sub">Public Domain (Nasjonalbiblioteket)</span>
+    </div>
+
+    <div class="book-pager toolbar">
+      <button type="button" id="prev-page-btn" class="secondary-btn">← Forrige side</button>
+      <div class="control-pill">
+        <label for="page-select">Side:</label>
+        <select id="page-select" aria-label="Velg side i boken"></select>
+      </div>
+      <button type="button" id="next-page-btn" class="secondary-btn">Neste side →</button>
+    </div>
+  </section>
+
+  <nav class="mobile-view-tabs" aria-label="Visningsmodus på liten skjerm">
+    <button type="button" class="tab-btn active" data-view-target="both">Begge</button>
+    <button type="button" class="tab-btn" data-view-target="liquid">Kun Liquid-leser</button>
+    <button type="button" class="tab-btn" data-view-target="source">Original &amp; Utsnitt</button>
+  </nav>
+
+  <main class="workspace-grid" id="workspace-grid" data-active-view="both">
+    <!-- VENSTRE PANEL: KILDEBILDE OG SEGMENTERINGSBOKSER -->
+    <section class="panel source-panel" aria-labelledby="source-heading">
+      <div class="panel-header">
+        <div>
+          <h2 id="source-heading">1. Originalbilde &amp; utsnitt</h2>
+          <p class="panel-hint">Dra en boks over en spalte eller et avsnitt for å lese kun det området.</p>
+        </div>
+        <div class="panel-actions toolbar">
+          <label class="checkbox-label" for="show-boxes-toggle">
+            <input type="checkbox" id="show-boxes-toggle" checked />
+            <span>Vis funnede ord</span>
+          </label>
+          <button type="button" id="reset-crop-btn" class="secondary-btn" disabled>
+            Hele siden
+          </button>
+        </div>
+      </div>
+
+      <div class="canvas-stage" id="canvas-stage">
+        <div class="canvas-wrapper" id="canvas-wrapper">
+          <canvas id="source-canvas" aria-label="Kildebilde med detekterte tekstlinjer og ord"></canvas>
+          <canvas id="overlay-canvas" aria-hidden="true"></canvas>
+        </div>
+      </div>
+
+      <footer class="panel-footer">
+        <div class="stats-bar" id="stats-bar" aria-live="polite">
+          Laster bilde...
+        </div>
+      </footer>
+    </section>
+
+    <!-- HØYRE PANEL: LIQUID MODE LESER -->
+    <section class="panel liquid-panel" aria-labelledby="liquid-heading">
+      <div class="panel-header">
+        <div>
+          <h2 id="liquid-heading">2. Liquid Mode (Leseflate)</h2>
+          <p class="panel-hint">Ordene nedenfor er ekte piksel-utklipp som bryter automatisk til skjermbredden din.</p>
+        </div>
+
+        <div class="theme-pills" role="group" aria-label="Visningsfilter for ord-piksler">
+          <button type="button" class="pill-btn active" data-render-mode="paper" aria-pressed="true">
+            Originalt papir
+          </button>
+          <button type="button" class="pill-btn" data-render-mode="clean" aria-pressed="false">
+            Renset blekk
+          </button>
+          <button type="button" class="pill-btn" data-render-mode="dark" aria-pressed="false">
+            Nattmodus (Invertert)
+          </button>
+        </div>
+      </div>
+
+      <!-- KONTROLLER FOR FORSTØRRING OG SEGMENTERING -->
+      <div class="controls-bar" role="region" aria-label="Lesekontroller og ordskille-finjustering">
+        <div class="slider-group">
+          <div class="slider-label-row">
+            <label for="scale-slider">Tekststørrelse (Forstørring)</label>
+            <output id="scale-output" for="scale-slider">185%</output>
+          </div>
+          <input type="range" id="scale-slider" min="80" max="400" step="5" value="185" />
+        </div>
+
+        <div class="slider-group">
+          <div class="slider-label-row">
+            <label for="stroke-weight-slider" title="Forsterker og gjør bokstavstreken fyldigere i Renset blekk / Nattmodus">Teksttykkelse (Blekkfylde)</label>
+            <output id="stroke-weight-output" for="stroke-weight-slider">+9</output>
+          </div>
+          <input type="range" id="stroke-weight-slider" min="-15" max="18" step="3" value="9" />
+        </div>
+
+        <div class="slider-group">
+          <div class="slider-label-row">
+            <label for="space-slider" title="Hvor bredt et hvitt mellomrom må være for å splitte to ord">Ordskille-følsomhet</label>
+            <output id="space-output" for="space-slider">1.00×</output>
+          </div>
+          <input type="range" id="space-slider" min="0.45" max="2.20" step="0.05" value="1.00" />
+        </div>
+
+        <div class="slider-group">
+          <div class="slider-label-row">
+            <label for="line-gap-slider">Linjeavstand</label>
+            <output id="line-gap-output" for="line-gap-slider">1.35×</output>
+          </div>
+          <input type="range" id="line-gap-slider" min="1.0" max="2.4" step="0.05" value="1.35" />
+        </div>
+      </div>
+
+      <!-- SAMMENLEGGBAR SKUFF (FLIS / PIL) FOR AVANSERT TRACING, LUPER OG TERSKEL -->
+      <details class="trace-lab-details" id="trace-lab-details">
+        <summary class="trace-lab-summary">
+          <div class="trace-title-group">
+            <span class="disclosure-chevron" aria-hidden="true">▸</span>
+            <span class="debug-badge">LAB</span>
+            <strong>Avansert typografi, vektor-tracing &amp; ord-lupe</strong>
+          </div>
+          <div class="summary-meta-pills">
+            <span id="active-algo-pill" class="summary-chip">Vektor-kontur • 3 steg • 0.0 px blur • +9 fylde</span>
+            <span id="trace-perf-pill" class="perf-pill" aria-live="polite">0 ms</span>
+          </div>
+        </summary>
+
+        <div class="trace-debug-bar" role="region" aria-label="Debug-kontroller for bokstav-tracing og kantglatting">
+          <div class="trace-debug-top">
+            <div class="trace-mode-buttons" role="group" aria-label="Algoritme for Renset blekk og Nattmodus">
+              <button type="button" class="debug-btn" data-trace-mode="raw" aria-pressed="false" title="1x original piksel-oppløsning (raskest, viser pikseltrappetrinn ved høy zoom)">
+                1. Rå piksler (1×)
+              </button>
+              <button type="button" class="debug-btn" data-trace-mode="superres" aria-pressed="false" title="3x bikubisk oppskalering med sub-piksel iso-kontur">
+                2. Sub-piksel Super-Res (3×)
+              </button>
+              <button type="button" class="debug-btn active" data-trace-mode="vector" aria-pressed="true" title="Ekte Marching Squares sub-piksel kontur-tracing med Chaikin-kurveglatting fylt i Retina-oppløsning">
+                3. Vektor-kontur (Marching Squares)
+              </button>
+              <button type="button" class="debug-btn" data-trace-mode="wireframe" aria-pressed="false" title="Debug: Viser de tracede vektor-stiene og kontrollpunktene oppå originalpikslene">
+                4. Debug: Vektor-trådramme
+              </button>
+            </div>
+          </div>
+
+          <div class="trace-debug-Controls">
+            <div class="mini-control">
+              <label for="smooth-iter-slider">Kurve-glatting (Chaikin):</label>
+              <input type="range" id="smooth-iter-slider" min="0" max="3" step="1" value="3" />
+              <output id="smooth-iter-output" for="smooth-iter-slider">3 steg</output>
+            </div>
+
+            <div class="mini-control">
+              <label for="preblur-slider">Sub-piksel mykhet (Pre-blur):</label>
+              <input type="range" id="preblur-slider" min="0" max="2" step="0.5" value="0" />
+              <output id="preblur-output" for="preblur-slider">0.0 px</output>
+            </div>
+
+            <div class="mini-control">
+              <label for="contrast-slider" title="Juster grunn-terskel for hva som regnes som blekk vs. papir ved linje- og ordsegmentering">Segmenterings-terskel:</label>
+              <input type="range" id="contrast-slider" min="-45" max="45" step="3" value="0" />
+              <output id="contrast-output" for="contrast-slider">0</output>
+            </div>
+
+            <label class="checkbox-label" for="toggle-loupe">
+              <input type="checkbox" id="toggle-loupe" checked />
+              <span>Vis 1× vs. Tracet lupe ved klikk på ord</span>
+            </label>
+          </div>
+
+          <!-- LUPE / SAMMENLIGNINGSVINDU FOR VALGT ORD -->
+          <div id="word-loupe-panel" class="word-loupe-panel" hidden>
+            <div class="loupe-card">
+              <span class="loupe-label">Original 1× piksler (forstørret)</span>
+              <canvas id="loupe-raw-canvas"></canvas>
+            </div>
+            <div class="loupe-card">
+              <span class="loupe-label" id="loupe-traced-title">Tracet / Glattet resultat</span>
+              <canvas id="loupe-traced-canvas"></canvas>
+            </div>
+            <div class="loupe-card">
+              <span class="loupe-label">Marching Squares Vektor-kontur</span>
+              <canvas id="loupe-wire-canvas"></canvas>
+            </div>
+          </div>
+        </div>
+      </details>
+
+      <!-- SELVE LIQUID-FLATEN DER ORD-BILDENE WRAPPER -->
+      <div
+        id="liquid-reader"
+        class="liquid-reader mode-paper"
+        tabindex="0"
+        role="region"
+        aria-label="Flytende piksel-tekst"
+      ></div>
+
+      <footer class="panel-footer reader-footer">
+        <span class="tip-badge">Tips:</span>
+        <span>Hold musepekeren over (eller trykk på) et ord i leseren for å se hvor det befinner seg i originalbildet!</span>
+      </footer>
+    </section>
+  </main>
+
+  <script src="app.js?v=4" defer></script>
+</body>
+</html>
