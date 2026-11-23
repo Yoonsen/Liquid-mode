@@ -102,16 +102,16 @@
     smoothIterations: 3,   // 3 Chaikin-iterasjoner (høy kurve-glatting)
     preblurRadius: 0.0,    // 0.0 px sub-piksel utjevning (lav pre-blur bevarer skarpe detaljer)
     strokeOffset: 9,       // +9 blekkfylde-offset (fyldigere, mer lesbar strek)
-    scaleFactor: 1.25,     // 125% moderat startforstørrelse (Liquid-flyten gjør allerede jobben!)
+    scaleFactor: 0.65,     // 65% kompakt startskala (matcher normal brødtekststørrelse, så Liquid-flyten står i sentrum)
     spaceSensitivity: 1.0,
     contrastOffset: 0,
     lineGapMultiplier: 1.35,
     iiifBook: null, // { title, pages: [{ label, serviceId }], currentIndex }
   };
 
-  const APP_VERSION = "1.2.0";
+  const APP_VERSION = "1.2.1";
   const APP_RELEASE_SUMMARY =
-    "Snillere utsnittsmarg med dra-håndtak, oppretting av skjeve skanninger (Deskew), Renset blekk på papirtone, sveip-blading og 125% startforstørrelse.";
+    "Kompakt startskala (65 %, ned til 35 % min) slik at Liquid-flyt og forstørrelse fungerer som to uavhengige faktorer.";
 
   // =========================================================================
   // 1. SYNTETISKE EKSEMPELSIDER & ÅPNE IIIF-KILDER (Nasjonalbiblioteket)

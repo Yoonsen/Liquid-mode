@@ -1,5 +1,5 @@
 {
-  "version": "1.2.0",
-  "updatedAt": "2026-11-24T00:46:00+01:00",
-  "summary": "Snillere utsnittsmarg med dra-håndtak, oppretting av skjeve skanninger (Deskew), Renset blekk på papirtone, sveip-blading og 125% startforstørrelse."
+  "version": "1.2.1",
+  "updatedAt": "2026-11-24T00:58:00+01:00",
+  "summary": "Kompakt startskala (65 %, ned til 35 % min) slik at Liquid-flyt og forstørrelse fungerer som to uavhengige faktorer."
 }

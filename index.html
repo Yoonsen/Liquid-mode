@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="light dark" />
   <meta name="text-scale" content="scale" />
   <title>Pixel-Liquid Mode — Universell leseflyt uten OCR</title>
-  <link rel="stylesheet" href="styles.css?v=6" />
+  <link rel="stylesheet" href="styles.css?v=7" />
 </head>
 <body>
   <!-- OPPDATERINGSVARSEL (som i neo-dhlab: varsler når ny versjon er rullet ut på GitHub Pages) -->
@@ -26,9 +26,9 @@
     <div class="brand-group">
       <div class="brand-badge" aria-hidden="true">≈</div>
       <div>
-        <div class="title-with-version">
+          <div class=" title-with-version">
           <h1>Pixel-Liquid Mode</h1>
-          <span id="app-version-badge" class="version-pill" title="Installert versjon">v1.2.0</span>
+          <span id="app-version-badge" class="version-pill" title="Installert versjon">v1.2.1</span>
         </div>
         <p class="subtitle">Reflow av skannet tekst og IIIF-bøker på piksel-nivå — helt uten OCR</p>
       </div>
@@ -169,10 +169,10 @@
       <div class="controls-bar reader-collapsible-ui" role="region" aria-label="Lesekontroller og ordskille-finjustering">
         <div class="slider-group">
           <div class="slider-label-row">
-            <label for="scale-slider">Tekststørrelse (Forstørring)</label>
-            <output id="scale-output" for="scale-slider">125%</output>
+            <label for="scale-slider">Tekststørrelse (Skala)</label>
+            <output id="scale-output" for="scale-slider">65%</output>
           </div>
-          <input type="range" id="scale-slider" min="80" max="400" step="5" value="125" />
+          <input type="range" id="scale-slider" min="35" max="350" step="5" value="65" />
         </div>
 
         <div class="slider-group">
@@ -298,6 +298,6 @@
     </section>
   </main>
 
-  <script src="app.js?v=6" defer></script>
+  <script src="app.js?v=7" defer></script>
 </body>
 </html>
