@@ -42,9 +42,11 @@
 
   const showBoxesToggle = document.getElementById("show-boxes-toggle");
   const resetCropBtn = document.getElementById("reset-crop-btn");
+  const autoCropBtn = document.getElementById("auto-crop-btn");
   const deskewSlider = document.getElementById("deskew-slider");
   const deskewOutput = document.getElementById("deskew-output");
   const autoDeskewBtn = document.getElementById("auto-deskew-btn");
+  const adaptiveShadowToggle = document.getElementById("adaptive-shadow-toggle");
 
   const zenToggleBtn = document.getElementById("zen-toggle-btn");
   const zenFloatingBar = document.getElementById("zen-floating-bar");
@@ -108,6 +110,7 @@
     baseNaturalLineWordSum: 640, // 85-persentil summert ordbredde (uskalert) for en full boklinje
     baseNaturalLineWordCount: 9, // Gjennomsnittlig antall ord i en full boklinje
     paperMedianLum: 220,   // Målt papirluminans (forhindrer at papir-korn tolkes som blekk på tittelsider)
+    useAdaptiveShadow: true, // 2D Integral Image lokal skyggefjerning (fjerner bokrygg-skygge / ujevnt lys)
     traceMode: "vector",   // 'raw' | 'superres' | 'vector' | 'wireframe'
     smoothIterations: 3,   // 3 Chaikin-iterasjoner (høy kurve-glatting)
     preblurRadius: 0.0,    // 0.0 px sub-piksel utjevning (lav pre-blur bevarer skarpe detaljer)
@@ -119,9 +122,9 @@
     iiifBook: null, // { title, pages: [{ label, serviceId }], currentIndex }
   };
 
-  const APP_VERSION = "1.4.2";
+  const APP_VERSION = "1.5.0";
   const APP_RELEASE_SUMMARY =
-    "Fikset frys/krasj på tittelsider med lite tekst (som Skrams Sommer): papir-forankret Otsu-terskel og sikring mot støy-konturer.";
+    "Fase 1: Lokal adaptiv terskel via 2D Integral Image (fjerner bokrygg-skygge på pocketbøker) og smart Auto-beskjæring av tekstsatsen!";
 
   // Hurtigminne (RAM-cache) for ferdig nedlastede IIIF-boksider (URL -> HTMLImageElement)
   const pageImageCache = new Map();
@@ -832,37 +835,244 @@
   // 3. BILDEANALYSE: GRÅTONER, OTSU-TERSKEL, LINJE- OG ORDSEGMENTERING
   // =========================================================================
 
+  /**
+   * 2D Integral Image (Summed-Area Table) som normaliserer lokal belysning
+   * på < 3 ms slik at mørke bokrygg-skygger (gutter shadow på pocketbøker)
+   * og ujevn mobilbelysning løftes til jevn papirtone uten å miste bokstavkontrast!
+   */
+  function normalizeGrayWithIntegralImage(rawGray, w, h, targetPaperLum) {
+    const sw = w + 1;
+    const sat = new Uint32Array(sw * (h + 1));
+
+    // Bygg 2D Summed-Area Table i én enkelt passering
+    for (let y = 0; y < h; y++) {
+      let rowSum = 0;
+      const srcRow = y * w;
+      const prevSatRow = y * sw;
+      const currSatRow = (y + 1) * sw;
+      for (let x = 0; x < w; x++) {
+        rowSum += rawGray[srcRow + x];
+        sat[currSatRow + x + 1] = sat[prevSatRow + x + 1] + rowSum;
+      }
+    }
+
+    // Vindusradius (~2.5% av bildets korteste side, typisk 24-32 px -> 49x49..65x65 vindu)
+    const R = Math.max(20, Math.round(Math.min(w, h) * 0.026));
+    const normGray = new Uint8Array(w * h);
+    const normHist = new Uint32Array(256);
+
+    for (let y = 0; y < h; y++) {
+      const y0 = Math.max(0, y - R);
+      const y1 = Math.min(h - 1, y + R);
+      const r0 = y0 * sw;
+      const r1 = (y1 + 1) * sw;
+      const spanH = y1 - y0 + 1;
+      const rowOff = y * w;
+
+      for (let x = 0; x < w; x++) {
+        const x0 = Math.max(0, x - R);
+        const x1 = Math.min(w - 1, x + R);
+        const area = (x1 - x0 + 1) * spanH;
+
+        const sum =
+          sat[r1 + x1 + 1] -
+          sat[r0 + x1 + 1] -
+          sat[r1 + x0] +
+          sat[r0 + x0];
+        const localMean = sum / area;
+
+        // Kompenser ~6% for at mørke bokstaver inne i vinduet trekker snittet litt ned
+        const localPaper = Math.max(48, Math.min(255, localMean * 1.06));
+        const val = Math.min(
+          255,
+          Math.max(0, Math.round((rawGray[rowOff + x] * targetPaperLum) / localPaper))
+        );
+        normGray[rowOff + x] = val;
+        normHist[val]++;
+      }
+    }
+
+    return { normGray, normHist };
+  }
+
+  /**
+   * Automatisk deteksjon av hovedtekstsatsen (Auto-Crop):
+   * 1. Skreller først bort mørke skannekanter / svarte bokrammer langs ytterkantene.
+   * 2. Finner deretter yttergrensene til selve tekstblokken med 2 % luft rundt.
+   */
+  function autoDetectTextBlockCrop() {
+    if (!state.gray || !sourceCanvas.width || !sourceCanvas.height) return null;
+    const w = sourceCanvas.width;
+    const h = sourceCanvas.height;
+    const gray = state.gray;
+    const thresh = state.otsuThreshold;
+
+    // 1. Skrell vekk mørke skannerammer ytterst (inntil 14% fra hver kant)
+    let minX = Math.round(w * 0.015);
+    let maxX = Math.round(w * 0.985);
+    let minY = Math.round(h * 0.015);
+    let maxY = Math.round(h * 0.985);
+
+    const maxBorderX = Math.round(w * 0.14);
+    const maxBorderY = Math.round(h * 0.12);
+
+    // Sjekk venstre kant for mørke skanningsstriper (> 38% mørke piksler i kolonnen)
+    for (let x = 0; x < maxBorderX; x++) {
+      let dark = 0;
+      for (let y = minY; y < maxY; y += 2) {
+        if (gray[y * w + x] < thresh) dark++;
+      }
+      if (dark / ((maxY - minY) / 2) > 0.38) {
+        minX = x + 4;
+      } else if (x > minX + 12) {
+        break;
+      }
+    }
+
+    // Sjekk høyre kant for mørke skanningsstriper
+    for (let x = w - 1; x > w - maxBorderX; x--) {
+      let dark = 0;
+      for (let y = minY; y < maxY; y += 2) {
+        if (gray[y * w + x] < thresh) dark++;
+      }
+      if (dark / ((maxY - minY) / 2) > 0.38) {
+        maxX = x - 4;
+      } else if (x < maxX - 12) {
+        break;
+      }
+    }
+
+    // Sjekk øvre og nedre kant for mørke skanningsstriper
+    for (let y = 0; y < maxBorderY; y++) {
+      let dark = 0;
+      for (let x = minX; x < maxX; x += 2) {
+        if (gray[y * w + x] < thresh) dark++;
+      }
+      if (dark / ((maxX - minX) / 2) > 0.38) {
+        minY = y + 4;
+      } else if (y > minY + 10) {
+        break;
+      }
+    }
+
+    for (let y = h - 1; y > h - maxBorderY; y--) {
+      let dark = 0;
+      for (let x = minX; x < maxX; x += 2) {
+        if (gray[y * w + x] < thresh) dark++;
+      }
+      if (dark / ((maxX - minX) / 2) > 0.38) {
+        maxY = y - 4;
+      } else if (y < maxY - 10) {
+        break;
+      }
+    }
+
+    // 2. Finn tekstsatsens aktive rader og kolonner innenfor det rensede området
+    const innerW = Math.max(40, maxX - minX);
+    const innerH = Math.max(40, maxY - minY);
+    const minRowInk = Math.max(4, Math.round(innerW * 0.01));
+    const minColInk = Math.max(4, Math.round(innerH * 0.008));
+
+    let textTop = minY;
+    let textBottom = maxY;
+    let textLeft = minX;
+    let textRight = maxX;
+
+    for (let y = minY; y < maxY; y++) {
+      let ink = 0;
+      const rowOff = y * w;
+      for (let x = minX; x < maxX; x++) {
+        if (gray[rowOff + x] < thresh) ink++;
+      }
+      if (ink >= minRowInk) {
+        textTop = y;
+        break;
+      }
+    }
+
+    for (let y = maxY - 1; y > textTop; y--) {
+      let ink = 0;
+      const rowOff = y * w;
+      for (let x = minX; x < maxX; x++) {
+        if (gray[rowOff + x] < thresh) ink++;
+      }
+      if (ink >= minRowInk) {
+        textBottom = y;
+        break;
+      }
+    }
+
+    for (let x = minX; x < maxX; x++) {
+      let ink = 0;
+      for (let y = textTop; y <= textBottom; y++) {
+        if (gray[y * w + x] < thresh) ink++;
+      }
+      if (ink >= minColInk) {
+        textLeft = x;
+        break;
+      }
+    }
+
+    for (let x = maxX - 1; x > textLeft; x--) {
+      let ink = 0;
+      for (let y = textTop; y <= textBottom; y++) {
+        if (gray[y * w + x] < thresh) ink++;
+      }
+      if (ink >= minColInk) {
+        textRight = x;
+        break;
+      }
+    }
+
+    const padX = Math.round(w * 0.018);
+    const padY = Math.round(h * 0.018);
+    const cx = Math.max(0, textLeft - padX);
+    const cy = Math.max(0, textTop - padY);
+    const cw = Math.min(w - cx, textRight - textLeft + padX * 2);
+    const ch = Math.min(h - cy, textBottom - textTop + padY * 2);
+
+    if (cw < w * 0.2 || ch < h * 0.15) {
+      return {
+        x: minX,
+        y: minY,
+        w: Math.max(40, maxX - minX),
+        h: Math.max(40, maxY - minY),
+      };
+    }
+
+    return { x: cx, y: cy, w: cw, h: ch };
+  }
+
   function ingestCanvasSource() {
     const w = sourceCanvas.width;
     const h = sourceCanvas.height;
     state.sourceImageData = sourceCtx.getImageData(0, 0, w, h);
     const rgba = state.sourceImageData.data;
 
-    // Beregn luminans (gråtoner) og histogram for Otsu-terskel
-    const gray = new Uint8Array(w * h);
-    const hist = new Uint32Array(256);
+    // 1. Beregn rå luminans (gråtoner) og histogram
+    const rawGray = new Uint8Array(w * h);
+    const rawHist = new Uint32Array(256);
 
     for (let i = 0, p = 0; i < rgba.length; i += 4, p++) {
       // ITU-R BT.601 luminans
       const lum = (rgba[i] * 77 + rgba[i + 1] * 150 + rgba[i + 2] * 29) >> 8;
-      gray[p] = lum;
-      hist[lum]++;
+      rawGray[p] = lum;
+      rawHist[lum]++;
     }
 
-    state.gray = gray;
-    state.otsuThreshold = computeOtsuThreshold(hist, w * h);
+    const rawOtsu = computeOtsuThreshold(rawHist, w * h);
 
-    // Mål den faktiske papirfargen fra lyse bakgrunnspiksler midt på siden
+    // 2. Mål den faktiske papirfargen fra lyse bakgrunnspiksler midt på siden
     // slik at "Renset blekk (Papirtone)" får samme behagelige varme bakgrunn som originalen!
     let sumR = 0;
     let sumG = 0;
     let sumB = 0;
     let countPaper = 0;
     const sampleStep = Math.max(4, Math.floor((w * h) / 4000));
-    const paperCutoff = Math.min(245, state.otsuThreshold + 18);
+    const paperCutoff = Math.min(245, rawOtsu + 18);
 
-    for (let p = 0; p < gray.length; p += sampleStep) {
-      if (gray[p] >= paperCutoff) {
+    for (let p = 0; p < rawGray.length; p += sampleStep) {
+      if (rawGray[p] >= paperCutoff) {
         const idx = p * 4;
         sumR += rgba[idx];
         sumG += rgba[idx + 1];
@@ -881,6 +1091,21 @@
       state.sampledPaperHex = "#f6efe0";
     }
     liquidReader.style.setProperty("--sampled-paper-bg", state.sampledPaperHex);
+
+    // 3. Lokal adaptiv skyggefjerning via 2D Integral Image (Summed-Area Table)
+    if (state.useAdaptiveShadow) {
+      const { normGray, normHist } = normalizeGrayWithIntegralImage(
+        rawGray,
+        w,
+        h,
+        state.paperMedianLum
+      );
+      state.gray = normGray;
+      state.otsuThreshold = computeOtsuThreshold(normHist, w * h);
+    } else {
+      state.gray = rawGray;
+      state.otsuThreshold = rawOtsu;
+    }
 
     runSegmentationAndRender();
   }
@@ -2242,6 +2467,25 @@
     resetCropBtn.disabled = true;
     runSegmentationAndRender();
   });
+
+  if (autoCropBtn) {
+    autoCropBtn.addEventListener("click", () => {
+      const detected = autoDetectTextBlockCrop();
+      if (detected) {
+        state.cropRect = detected;
+        rememberCropRatio(state.cropRect);
+        resetCropBtn.disabled = false;
+        runSegmentationAndRender();
+      }
+    });
+  }
+
+  if (adaptiveShadowToggle) {
+    adaptiveShadowToggle.addEventListener("change", () => {
+      state.useAdaptiveShadow = adaptiveShadowToggle.checked;
+      ingestCanvasSource();
+    });
+  }
 
   // Deskew / oppretting av skjeve skanninger
   if (deskewSlider) {

@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="light dark" />
   <meta name="text-scale" content="scale" />
   <title>Pixel-Liquid Mode — Bibliotek &amp; Leseflate uten OCR</title>
-  <link rel="stylesheet" href="styles.css?v=11" />
+  <link rel="stylesheet" href="styles.css?v=12" />
 </head>
 <body data-app-screen="library">
   <!-- OPPDATERINGSVARSEL (varsler når ny versjon er rullet ut på GitHub Pages) -->
@@ -32,7 +32,7 @@
         <div>
           <div class="title-with-version">
             <h1>Pixel-Liquid Mode</h1>
-            <span id="app-version-badge" class="version-pill" title="Installert versjon">v1.4.2</span>
+            <span id="app-version-badge" class="version-pill" title="Installert versjon">v1.5.0</span>
           </div>
           <p class="subtitle">Universell leseflyt på pikselnivå — helt uten OCR</p>
         </div>
@@ -364,6 +364,11 @@
               <output id="contrast-output" for="contrast-slider">0</output>
             </div>
 
+            <label class="checkbox-label" for="adaptive-shadow-toggle" title="Bruker 2D Integral Image (41x41 vindu) for å fjerne mørke skygger ved bokrygg og ujevn belysning">
+              <input type="checkbox" id="adaptive-shadow-toggle" checked />
+              <span>Lokal skyggefjerning (Bokrygg)</span>
+            </label>
+
             <label class="checkbox-label" for="toggle-loupe">
               <input type="checkbox" id="toggle-loupe" checked />
               <span>Vis ord-lupe</span>
@@ -407,6 +412,9 @@
               <input type="checkbox" id="show-boxes-toggle" checked />
               <span>Vis ord</span>
             </label>
+            <button type="button" id="auto-crop-btn" class="secondary-btn" title="Finn tekstsatsen automatisk og fjern svarte skannekanter / marger">
+              ✨ Auto-beskjær
+            </button>
             <button type="button" id="reset-crop-btn" class="secondary-btn" disabled>
               Hele siden
             </button>
@@ -461,6 +469,6 @@
     <button type="button" id="zen-split-btn" hidden></button>
   </div>
 
-  <script src="app.js?v=11" defer></script>
+  <script src="app.js?v=12" defer></script>
 </body>
 </html>
