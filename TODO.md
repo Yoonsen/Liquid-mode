@@ -51,18 +51,19 @@ I stedet for tradisjonell panorering/zooming segmenterer appen tekstlinjer og en
 - [x] **Geometrisk orddeling og bindestrek-sammensying (v1.6.0):** Gjenkjenner bindestrek (`-` / `=`) ved linjeslutt via pikselgeometri (lav høyde sentrert rundt x-høyden `yCore`), trimmer bort bindestreken og syr sammen `bok-` + `bad` til ett udelelig ord (`bokbad`) når teksten flyter i Liquid-modus!
 
 ### 🔜 Neste steg (Fase 1.3 & Fase 2)
-1. **Fase 1.3 – Typografisk justering (Alignment: Rett høyremarg / Blokkjustering & Midtstilte overskrifter):**
-   - *Utfordring:* `display: flex; flex-wrap: wrap` støtter ikke ekte bok-blokkjustering (der fulle linjer strekkes til rett høyremarg mens siste linje i avsnittet forblir venstrejustert).
-   - *Løsning:* Gruppere ordene per avsnitt i `<div class="liquid-paragraph">` og bruke `display: inline-block` med ekte mellomrom (`" "`) + CSS `text-align: justify; text-align-last: left;` (valgfritt mot vanlig venstrejustert `text-align: left`, som ofte foretrekkes av svaksynte/dyslektikere for jevn ordavstand).
-   - Oppdage **midtstilte linjer / overskrifter** i originalen (korte linjer der venstre og høyre marg er symmetrisk trukket inn mot midten) og gi dem `text-align: center`.
-2. **Fase 1.4 – Ytelsesoptimalisering på svært lange sider:**
+1. **Fase 1.3 – Per-ord Baseline- & Helnings-alignment («De-jagg» når linje $N$ møter linje $N+1$):**
+   - *Problem:* Når en bokside er litt på skrå eller krummer inn mot bokryggen, ligger siste ord på linje $N$ lavere/høyere (og med helning $N^\circ$) enn første ord på linje $N+1$ (med helning $M^\circ$). Når disse to ordene havner ved siden av hverandre i Liquid-flyt, oppstår et vertikalt «trappetrinn» (jagged hopp).
+   - *Lettvektsløsning (nesten 0 ekstra CPU):*
+     1. Beregn en glattet **lokal vertikal grunnlinje $y_{\text{core}}(x)$ per ord** langs linjen (via lineær/polynomisk regresjon gjennom ordenes egne tyngdepunkter på linjen), slik at hvert ord klippes ut sentrert rundt sin *lokale* $y_{\text{core}}(x)$ i stedet for hele linjens gjennomsnitt.
+     2. Bruk den lokale helningen $s(x) = \frac{dy_{\text{core}}}{dx}$ til å rette opp ordet med en rask vertikal skjæring (*vertical shear*: $y' = y - (x - x_c) \cdot s(x)$) direkte i `extractWordScalarField` — da møtes siste ord fra linje 1 og første ord fra linje 2 snorrett på samme grunnlinje og med $0^\circ$ helning!
+2. **Fase 1.4 – Typografisk marg-justering (Blokkjustering & Midtstilte overskrifter):**
+   - Gruppere ordene per avsnitt i `<div class="liquid-paragraph">` med `display: inline-block` og CSS `text-align: justify; text-align-last: left;` (samt `text-align: center` for korte, symmetriske overskrifter).
+3. **Fase 1.5 – Ytelsesoptimalisering på svært lange sider:**
    - Vurdere `IntersectionObserver` (lazy-rendering av ord-canvases under bretten) dersom sider med > 600 ord (f.eks. store avissider) oppleves tunge på eldre telefoner.
-3. **Fase 2.1 – Automatisk kolonnedeteksjon (Flerspalters bøker og aviser):**
+4. **Fase 2.1 – Automatisk kolonnedeteksjon (Flerspalters bøker og aviser):**
    - Oppdage vertikale hvite renner (*column gutters*) automatisk og lese spalte for spalte ovenfra og ned uten at brukeren trenger å markere én spalte manuelt.
-4. **Fase 2.2 – Filtrering av dekorative skillelinjer:**
+5. **Fase 2.2 – Filtrering av dekorative skillelinjer:**
    - Filtrere ut lange horisontale/vertikale spaltelinjer og tabellstreker i aviser slik at de ikke slår sammen ord.
-5. **Fase 2.3 – Lokal linjekrumning (Unwarp ved bokrygg):**
-   - Følge linjekrumningen lokalt inn mot bokryggen på tykke pocketbøker der tekstlinjene bøyer seg nedover ytterst i margen.
 
 ---
 
