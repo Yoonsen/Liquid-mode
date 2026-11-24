@@ -107,6 +107,7 @@
     flowMode: "auto",      // 'auto' (Original bredde når plass -> Liquid ved zoom) | 'liquid' | 'lines'
     baseNaturalLineWordSum: 640, // 85-persentil summert ordbredde (uskalert) for en full boklinje
     baseNaturalLineWordCount: 9, // Gjennomsnittlig antall ord i en full boklinje
+    paperMedianLum: 220,   // Målt papirluminans (forhindrer at papir-korn tolkes som blekk på tittelsider)
     traceMode: "vector",   // 'raw' | 'superres' | 'vector' | 'wireframe'
     smoothIterations: 3,   // 3 Chaikin-iterasjoner (høy kurve-glatting)
     preblurRadius: 0.0,    // 0.0 px sub-piksel utjevning (lav pre-blur bevarer skarpe detaljer)
@@ -118,9 +119,9 @@
     iiifBook: null, // { title, pages: [{ label, serviceId }], currentIndex }
   };
 
-  const APP_VERSION = "1.4.1";
+  const APP_VERSION = "1.4.2";
   const APP_RELEASE_SUMMARY =
-    "Smart linjebryting (Auto): Beholder bokens originale linjelengde når skjermen har ekstra plass, og går automatisk over i kontinuerlig Liquid-flyt når du forstørrer!";
+    "Fikset frys/krasj på tittelsider med lite tekst (som Skrams Sommer): papir-forankret Otsu-terskel og sikring mot støy-konturer.";
 
   // Hurtigminne (RAM-cache) for ferdig nedlastede IIIF-boksider (URL -> HTMLImageElement)
   const pageImageCache = new Map();
@@ -981,6 +982,21 @@
   }
 
   function computeOtsuThreshold(hist, totalPixels) {
+    // 1. Finn papirets typiske lysstyrke (65-persentilen av pikslene på siden).
+    // På tittelsider eller nesten tomme sider (der >98% av pikslene er papir)
+    // vil vanlig Otsu ellers dele selve papir-gradienten i to og tolke halve papiret som blekk!
+    let cum = 0;
+    let paperLum = 215;
+    const targetPaperRank = totalPixels * 0.65;
+    for (let t = 0; t < 256; t++) {
+      cum += hist[t];
+      if (cum >= targetPaperRank) {
+        paperLum = t;
+        break;
+      }
+    }
+    state.paperMedianLum = paperLum;
+
     let sum = 0;
     for (let t = 0; t < 256; t++) sum += t * hist[t];
 
@@ -1006,7 +1022,11 @@
         threshold = t;
       }
     }
-    return threshold;
+
+    // Sikre at blekk-terskelen alltid ligger minst 34 nivåer mørkere enn selve papirbakgrunnen!
+    // Dette forhindrer at papir-støy på tittelsider (som Skrams "Sommer") utløser gigantiske konturer.
+    const maxSafeInkThreshold = Math.max(55, paperLum - 34);
+    return Math.min(threshold, maxSafeInkThreshold);
   }
 
   /**
@@ -1086,8 +1106,12 @@
       }
     }
 
-    // Filtrer bort støy-linjer som er lavere enn 6 piksler
-    const validBands = mergedBands.filter((b) => b.bottom - b.top + 1 >= 6);
+    // Filtrer bort støy-linjer (< 6px) og ekstremt høye bånd (> 260px, f.eks. helsides ramme/illustrasjon)
+    const maxAllowedBandH = Math.max(180, Math.round(roiH * 0.22));
+    const validBands = mergedBands.filter((b) => {
+      const bh = b.bottom - b.top + 1;
+      return bh >= 6 && bh <= maxAllowedBandH;
+    });
 
     // Beregn median linjehøyde og median linjeavstand (for å oppdage avsnittsskift!)
     const heights = validBands.map((b) => b.bottom - b.top + 1);
@@ -1560,6 +1584,15 @@
       }
     }
 
+      if ( segments.length > 3600 ) {
+        // Sikring mot tunge vignettsiegel / illustrasjoner med tusenvis av mikrokonturer:
+        // reduser glatting til maks 1 steg så siden aldri fryser
+        chaikinSteps = Math.min(1, chaikinSteps);
+      }
+      if (segments.length > 9000) {
+        return [];
+      }
+
     // Sy sammen segmentene til sammenhengende lukkede konturer
     const keyOf = (pt) => `${Math.round(pt.x * 1000)},${Math.round(pt.y * 1000)}`;
     const startMap = new Map();
@@ -1626,9 +1659,11 @@
   function drawWordTokenCanvas(wCanvas, word, baseInkThreshold, overrideTraceMode = null, overrideScale = null) {
     const mode = state.renderMode;
     const tMode = overrideTraceMode || state.traceMode;
+    // La aldri effektiv terskel (inkl. blekkfylde-offset) krysse opp i selve papirfargen!
+    const maxSafeForPaper = Math.max(60, (state.paperMedianLum || 220) - 22);
     const effectiveThreshold = Math.max(
       15,
-      Math.min(245, baseInkThreshold + state.strokeOffset)
+      Math.min(maxSafeForPaper, baseInkThreshold + state.strokeOffset)
     );
 
     const wCtx = wCanvas.getContext("2d");
