@@ -8,7 +8,7 @@
   <title>Pixel-Liquid Mode — Bibliotek &amp; Leseflate uten OCR</title>
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
   <link rel="apple-touch-icon" href="favicon.svg" />
-  <link rel="stylesheet" href="styles.css?v=13" />
+  <link rel="stylesheet" href="styles.css?v=14" />
 </head>
 <body data-app-screen="library">
   <!-- OPPDATERINGSVARSEL (varsler når ny versjon er rullet ut på GitHub Pages) -->
@@ -36,7 +36,7 @@
         <div>
           <div class="title-with-version">
             <h1>Pixel-Liquid Mode</h1>
-            <span id="app-version-badge" class="version-pill" title="Installert versjon">v1.5.1</span>
+            <span id="app-version-badge" class="version-pill" title="Installert versjon">v1.6.0</span>
           </div>
           <p class="subtitle">Universell leseflyt på pikselnivå — helt uten OCR</p>
         </div>
@@ -372,6 +372,11 @@
               <span>Lokal skyggefjerning (Bokrygg)</span>
             </label>
 
+            <label class="checkbox-label" for="merge-hyphens-toggle" title="Gjenkjenner bindestreker ved linjeslutt geometrisk og limer sammen orddeling (f.eks. bok- + bad -> bokbad) i Liquid-flyt">
+              <input type="checkbox" id="merge-hyphens-toggle" checked />
+              <span>Lim sammen orddeling (bok- + bad)</span>
+            </label>
+
             <label class="checkbox-label" for="toggle-loupe">
               <input type="checkbox" id="toggle-loupe" checked />
               <span>Vis ord-lupe</span>
@@ -472,6 +477,6 @@
     <button type="button" id="zen-split-btn" hidden></button>
   </div>
 
-  <script src="app.js?v=13" defer></script>
+  <script src="app.js?v=14" defer></script>
 </body>
 </html>

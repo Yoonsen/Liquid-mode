@@ -1,5 +1,5 @@
 {
-  "version": "1.5.1",
-  "updatedAt": "2026-11-24T21:14:00+01:00",
-  "summary": "Nytt Pixel-to-Liquid SVG-favicon og slanket mobilvennlig topp-pille i leseren (kun ← Bibliotek og Aa Utseende)!"
+  "version": "1.6.0",
+  "updatedAt": "2026-11-24T21:34:00+01:00",
+  "summary": "Sammensying av orddeling med bindestrek (bok- + bad -> bokbad i Liquid-flyt) og treffsikker avsnittsgjenkjenning via både innrykk, kortlinjer og linjeavstand!"
 }

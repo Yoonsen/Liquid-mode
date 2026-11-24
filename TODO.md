@@ -40,12 +40,15 @@ I stedet for tradisjonell panorering/zooming segmenterer appen tekstlinjer og en
 
 ## 3. Veikart & Status
 
-### ✅ Fullført i v1.4 – v1.5
-- [x] To-delt visning: **Bibliotek** (kuraterte bøker + direkte søk mot NB.no Public Domain) og **Fullskjerms leser** med tidsstyrte flytende HUD-piller (4,2 sek).
+### ✅ Fullført i v1.4 – v1.6
+- [x] To-delt visning: **Bibliotek** (kuraterte bøker + direkte søk mot NB.no Public Domain) og **Fullskjerms leser** med tidsstyrte flytende HUD-piller (`← Bibliotek` og `Aa Utseende`).
+- [x] Nytt **Pixel-to-Liquid SVG-favicon** (`favicon.svg`).
 - [x] Smart linjebryting (`Auto`): Beholder original linjelengde når skjermen har plass, og går automatisk over i Liquid-flyt ved forstørrelse.
 - [x] Papir-forankret Otsu-terskel + kontur-sikring mot frys på tittelsider (som Amalie Skrams *Sommer*).
 - [x] **Fase 1.1: Lokal adaptiv terskel (2D Integral Image / Summed-Area Table)** for bokrygg-skygger (*gutter shadow*) og ujevn belysning på pocketbøker.
-- [x] **Fase 1.2: Automatisk tekstblokk-deteksjon (Auto-beskjæring)** som skreller bort mørke skannekanter og bokrygg-striper + egen `Auto-utsnitt`-knapp i utsnittspanelet.
+- [x] **Fase 1.2: Automatisk tekstblokk-deteksjon (Auto-beskjæring)** som skreller bort mørke skannekanter og bokrygg-striper + egen `✨ Auto-beskjær`-knapp i utsnittspanelet.
+- [x] **Fler-signals avsnittsgjenkjenning (v1.6.0):** Kombinerer 1) ekstra vertikal linjeavstand, 2) første-linjes innrykk i klassisk boksats (`> 0.65 × linjehøyde` fra venstremarg), og 3) kort avslutningslinje på foregående linje (`> 14 %` før høyremarg), med visuelt innrykk på nye avsnitt.
+- [x] **Geometrisk orddeling og bindestrek-sammensying (v1.6.0):** Gjenkjenner bindestrek (`-` / `=`) ved linjeslutt via pikselgeometri (lav høyde sentrert rundt x-høyden `yCore`), trimmer bort bindestreken og syr sammen `bok-` + `bad` til ett udelelig ord (`bokbad`) når teksten flyter i Liquid-modus!
 
 ### 🔜 Neste steg (Fase 1.3 & Fase 2)
 1. **Fase 1.3 – Ytelsesoptimalisering på svært lange sider:**

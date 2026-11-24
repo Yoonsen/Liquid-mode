@@ -1081,10 +1081,33 @@ input[type="text"] {
   inline-size: 4.5rem;
 }
 
-/* Ord-tokens og linjeskift i Liquid-leseren */
+/* Ord-tokens, avsnittsinnrykk og sammensydd orddeling (bok- + bad -> bokbad) */
 .liquid-paragraph-break {
   flex-basis: 100%;
-  block-size: 0.75rem;
+  block-size: calc(var(--liquid-line-gap, 0.65rem) * 0.75);
+}
+
+.word-token.paragraph-indent-token {
+  margin-inline-start: calc(var(--liquid-word-gap, 0.55rem) * 2.35);
+}
+
+/* Sammensydd orddelings-token (vises når teksten flyter i continuous-liquid-flow) */
+.word-token.hyphen-merged-token {
+  gap: 0;
+  border-bottom: 1px dotted rgba(180, 83, 9, 0.35);
+}
+
+.word-token.hyphen-merged-token canvas + canvas {
+  margin-inline-start: -1px;
+}
+
+.liquid-reader.preserve-original-lines .hyphen-merged-token {
+  display: none;
+}
+
+.liquid-reader.continuous-liquid-flow .hyphen-orig-part,
+.liquid-reader.continuous-liquid-flow .hyphen-orig-next-part {
+  display: none;
 }
 
 /* Mykt linjeskift mellom originale boklinjer:

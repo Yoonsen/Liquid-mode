@@ -47,6 +47,7 @@
   const deskewOutput = document.getElementById("deskew-output");
   const autoDeskewBtn = document.getElementById("auto-deskew-btn");
   const adaptiveShadowToggle = document.getElementById("adaptive-shadow-toggle");
+  const mergeHyphensToggle = document.getElementById("merge-hyphens-toggle");
 
   const zenToggleBtn = document.getElementById("zen-toggle-btn");
   const zenFloatingBar = document.getElementById("zen-floating-bar");
@@ -111,6 +112,9 @@
     baseNaturalLineWordCount: 9, // Gjennomsnittlig antall ord i en full boklinje
     paperMedianLum: 220,   // Målt papirluminans (forhindrer at papir-korn tolkes som blekk på tittelsider)
     useAdaptiveShadow: true, // 2D Integral Image lokal skyggefjerning (fjerner bokrygg-skygge / ujevnt lys)
+    mergeHyphens: true,    // Limer sammen orddeling ved linjeslutt (bok- + bad -> bokbad) i Liquid-flyt
+    detectedParagraphCount: 0,
+    detectedHyphenJoinCount: 0,
     traceMode: "vector",   // 'raw' | 'superres' | 'vector' | 'wireframe'
     smoothIterations: 3,   // 3 Chaikin-iterasjoner (høy kurve-glatting)
     preblurRadius: 0.0,    // 0.0 px sub-piksel utjevning (lav pre-blur bevarer skarpe detaljer)
@@ -122,9 +126,9 @@
     iiifBook: null, // { title, pages: [{ label, serviceId }], currentIndex }
   };
 
-  const APP_VERSION = "1.5.1";
+  const APP_VERSION = "1.6.0";
   const APP_RELEASE_SUMMARY =
-    "Nytt Pixel-to-Liquid SVG-favicon og slanket mobilvennlig topp-pille i leseren (kun ← Bibliotek og Aa Utseende)!";
+    "Sammensying av orddeling med bindestrek (bok- + bad -> bokbad i Liquid-flyt) og treffsikker avsnittsgjenkjenning via både innrykk, kortlinjer og linjeavstand!";
 
   // Hurtigminne (RAM-cache) for ferdig nedlastede IIIF-boksider (URL -> HTMLImageElement)
   const pageImageCache = new Map();
@@ -1437,6 +1441,41 @@
       const normBottom = Math.min(y1 - 1, Math.round(yCore + paddedHalfBottom));
       const normH = Math.max(6, normBottom - normTop + 1);
 
+      /**
+       * Geometrisk deteksjon av bindestrek (- eller =) helt til høyre på en linje:
+       * En bindestrek er smal (3..70% av linjehøyden), har lav vertikal utstrekning
+       * (<= 46% av linjehøyden), og ligger sentrert rundt x-høyden (yCore).
+       */
+      function checkHyphenGeometry(colStart, colEnd) {
+        const runW = colEnd - colStart + 1;
+        if (runW < 3 || runW > Math.max(20, Math.round(bandH * 0.72))) {
+          return false;
+        }
+        let minInkY = absBottom + 1;
+        let maxInkY = absTop - 1;
+        let inkPixels = 0;
+
+        for (let c = colStart; c <= colEnd; c++) {
+          const absX = x0 + c;
+          for (let y = absTop; y <= absBottom; y++) {
+            if (state.gray[y * fullW + absX] < inkThreshold) {
+              if (y < minInkY) minInkY = y;
+              if (y > maxInkY) maxInkY = y;
+              inkPixels++;
+            }
+          }
+        }
+        if (inkPixels < 2 || maxInkY < minInkY) return false;
+
+        const inkH = maxInkY - minInkY + 1;
+        const midY = (minInkY + maxInkY) * 0.5;
+        const isVerticallyCompact = inkH <= Math.max(10, Math.round(bandH * 0.46));
+        const isCenteredOnXHeight = Math.abs(midY - yCore) <= bandH * 0.30;
+        const clearsTopAscenders = minInkY >= absTop + Math.max(1, Math.floor(bandH * 0.12));
+        return isVerticallyCompact && isCenteredOnXHeight && clearsTopAscenders;
+      }
+
+      const padX = 2;
       const lineWords = [];
       for (const span of wordSpans) {
         const spanW = span.right - span.left + 1;
@@ -1447,7 +1486,6 @@
           if (totalSpanInk <= 2) continue;
         }
 
-        const padX = 2;
         const wordX = Math.max(x0, x0 + span.left - padX);
         const wordRight = Math.min(x1 - 1, x0 + span.right + padX);
         const wordW = Math.max(3, wordRight - wordX + 1);
@@ -1461,29 +1499,174 @@
           h: normH,
           tightY: absTop,
           tightH: bandH,
+          spanLeft: span.left,
+          spanRight: span.right,
+          hasTrailingHyphen: false,
+          wWithoutHyphen: wordW,
+          joinWithNextWord: null,
+          joinedToPrevWord: null,
         };
         lineWords.push(wordObj);
         allWords.push(wordObj);
       }
 
+      // Sjekk om siste ord på linjen ender med en bindestrek (tre tilfeller):
+      // A) Bindestreken ble skilt ut som en egen liten "wordSpan" helt til høyre
+      // B) Bindestreken er siste "charRun" inne i siste ord
+      // C) Bindestreken henger så vidt sammen med siste bokstav som en smal horisontal "hale"
+      if (lineWords.length >= 1 && charRuns.length >= 2) {
+        const lastRun = charRuns[charRuns.length - 1];
+        const prevRun = charRuns[charRuns.length - 2];
+        const lastWord = lineWords[lineWords.length - 1];
+
+        if (
+          lineWords.length >= 2 &&
+          lastWord.spanLeft === lastRun.left &&
+          lastWord.spanRight === lastRun.right &&
+          checkHyphenGeometry(lastRun.left, lastRun.right)
+        ) {
+          // Tilfelle A: Bindestreken ble et eget lite segment etter siste ord -> slå sammen med forrige ord!
+          const penultimateWord = lineWords[lineWords.length - 2];
+          penultimateWord.wWithoutHyphen = penultimateWord.w;
+          penultimateWord.w = Math.max(
+            penultimateWord.w,
+            lastWord.x + lastWord.w - penultimateWord.x
+          );
+          penultimateWord.hasTrailingHyphen = true;
+          lineWords.pop();
+          allWords.pop();
+        } else if (
+          prevRun.left >= lastWord.spanLeft &&
+          checkHyphenGeometry(lastRun.left, lastRun.right)
+        ) {
+          // Tilfelle B: Bindestreken er siste charRun inne i siste ord
+          const trimmedRight = Math.min(x1 - 1, x0 + prevRun.right + padX);
+          lastWord.hasTrailingHyphen = true;
+          lastWord.wWithoutHyphen = Math.max(4, trimmedRight - lastWord.x + 1);
+        } else {
+          // Tilfelle C: Sjekk om de ytterste kolonnene i lastRun utgjør en smal bindestrek-hale
+          const lastRunW = lastRun.right - lastRun.left + 1;
+          const tailW = Math.min(
+            Math.max(4, Math.round(bandH * 0.34)),
+            Math.floor(lastRunW * 0.42)
+          );
+          if (
+            tailW >= 4 &&
+            lastRunW >= Math.round(bandH * 0.65) &&
+            checkHyphenGeometry(lastRun.right - tailW + 1, lastRun.right)
+          ) {
+            const trimmedRight = Math.min(
+              x1 - 1,
+              x0 + (lastRun.right - tailW) + 1
+            );
+            lastWord.hasTrailingHyphen = true;
+            lastWord.wWithoutHyphen = Math.max(4, trimmedRight - lastWord.x + 1);
+          }
+        }
+      }
+
       if (lineWords.length > 0) {
         const prevBand = lineIdx > 0 ? validBands[lineIdx - 1] : null;
         const gapFromPrev = prevBand ? band.top - prevBand.bottom : 0;
-        const isParagraphStart =
-          lines.length > 0 &&
-          gapFromPrev > Math.max(medianLineGap * 1.55, medianLineHeight * 0.48);
 
         lines.push({
           lineIndex: lines.length,
           yTop: absTop,
           yBottom: absBottom,
           yCore,
-          isParagraphStart,
+          gapFromPrev,
+          leftEdge: lineWords[0].x,
+          rightEdge:
+            lineWords[lineWords.length - 1].x +
+            lineWords[lineWords.length - 1].w,
+          isParagraphStart: false,
+          hasFirstLineIndent: false,
           words: lineWords,
         });
       }
     });
 
+    // --- STEG C: Fler-signals Avsnittsgjenkjenning & Sammensying av Orddeling ---
+    let paragraphCount = 0;
+    let hyphenJoinCount = 0;
+
+    if (lines.length > 0) {
+      // Finn tekstblokkens typiske venstremarg (20-persentil) og høyremarg (80-persentil)
+      const fullLines = lines.filter((l) => l.words.length >= 2);
+      const refLines = fullLines.length >= 2 ? fullLines : lines;
+
+      const sortedLefts = refLines.map((l) => l.leftEdge).sort((a, b) => a - b);
+      const sortedRights = refLines.map((l) => l.rightEdge).sort((a, b) => a - b);
+
+      const pageLeftMargin =
+        sortedLefts[Math.floor(sortedLefts.length * 0.2)] ?? sortedLefts[0];
+      const pageRightMargin =
+        sortedRights[Math.floor(sortedRights.length * 0.8)] ??
+        sortedRights[sortedRights.length - 1];
+      const typicalLineSpan = Math.max(80, pageRightMargin - pageLeftMargin);
+
+      // Sjekk om første linje på siden starter med tydelig avsnittsinnrykk
+      const firstLineIndent = lines[0].leftEdge - pageLeftMargin;
+      if (
+        firstLineIndent >= Math.max(11, medianLineHeight * 0.65) &&
+        firstLineIndent <= typicalLineSpan * 0.42
+      ) {
+        lines[0].hasFirstLineIndent = true;
+        paragraphCount++;
+      }
+
+      for (let i = 1; i < lines.length; i++) {
+        const curr = lines[i];
+        const prev = lines[i - 1];
+
+        // Signal 1: Ekstra vertikal linjeavstand (moderne sats / luft mellom avsnitt)
+        const hasVerticalGap =
+          curr.gapFromPrev >
+          Math.max(medianLineGap * 1.48, medianLineHeight * 0.46);
+
+        // Signal 2: Første-linjes innrykk på nåværende linje (klassisk boksats som i Sult / Skram)
+        const indentPx = curr.leftEdge - pageLeftMargin;
+        const hasIndent =
+          indentPx >= Math.max(11, medianLineHeight * 0.65) &&
+          indentPx <= typicalLineSpan * 0.45;
+
+        // Signal 3: Foregående linje sluttet tydelig før høyremargen (kort sluttlinje i avsnitt)
+        const prevShortfall = pageRightMargin - prev.rightEdge;
+        const prevEndedEarly =
+          prevShortfall >= Math.max(24, typicalLineSpan * 0.14);
+
+        if (hasVerticalGap || hasIndent || prevEndedEarly) {
+          curr.isParagraphStart = true;
+          curr.hasFirstLineIndent = hasIndent || prevEndedEarly;
+          paragraphCount++;
+        }
+      }
+
+      // Par sammen orddeling ved linjeslutt (bok- på linje i + bad på linje i+1 -> bokbad)
+      if (state.mergeHyphens) {
+        for (let i = 0; i < lines.length - 1; i++) {
+          const curr = lines[i];
+          const next = lines[i + 1];
+          const lastWord = curr.words[curr.words.length - 1];
+          const firstNextWord = next.words[0];
+
+          if (
+            lastWord &&
+            firstNextWord &&
+            lastWord.hasTrailingHyphen &&
+            !next.isParagraphStart &&
+            curr.rightEdge >= pageRightMargin - typicalLineSpan * 0.28
+          ) {
+            lastWord.joinWithNextWord = firstNextWord;
+            firstNextWord.joinedToPrevWord = lastWord;
+            hyphenJoinCount++;
+          }
+        }
+      }
+    }
+
+    state.detectedParagraphCount = paragraphCount;
+    state.detectedHyphenJoinCount = hyphenJoinCount;
     state.detectedLines = lines;
     state.detectedWords = allWords;
 
@@ -2132,9 +2315,19 @@
         });
       }
 
-      for (const word of line.words) {
+      for (let wIdx = 0; wIdx < line.words.length; wIdx++) {
+        const word = line.words[wIdx];
         const token = document.createElement("span");
         token.className = "word-token";
+        if (wIdx === 0 && line.hasFirstLineIndent) {
+          token.classList.add("paragraph-indent-token");
+        }
+        if (word.joinWithNextWord) {
+          token.classList.add("hyphen-orig-part");
+        }
+        if (word.joinedToPrevWord) {
+          token.classList.add("hyphen-orig-next-part");
+        }
         if (state.selectedWord && state.selectedWord.id === word.id) {
           token.classList.add("active-word");
         }
@@ -2173,6 +2366,64 @@
 
         token.appendChild(wCanvas);
         fragment.appendChild(token);
+
+        // Hvis dette ordet slutter med bindestrek (f.eks. "bok-") og skal limes sammen
+        // med første ord på neste linje ("bad") i kontinuerlig Liquid-flyt -> lag sammensydd "bokbad"-token!
+        if (word.joinWithNextWord) {
+          const nextWord = word.joinWithNextWord;
+          const mergedToken = document.createElement("span");
+          mergedToken.className = "word-token hyphen-merged-token";
+          if (wIdx === 0 && line.hasFirstLineIndent) {
+            mergedToken.classList.add("paragraph-indent-token");
+          }
+          mergedToken.dataset.wordId = String(word.id);
+          mergedToken.title = `Sammensydd orddeling (linje ${line.lineIndex + 1} + ${line.lineIndex + 2})`;
+
+          // Første del uten bindestrek ("bok")
+          const trimmedWordA = {
+            ...word,
+            w: Math.max(3, word.wWithoutHyphen || word.w),
+          };
+          const canvasA = document.createElement("canvas");
+          canvasA.dataset.origW = String(trimmedWordA.w);
+          canvasA.dataset.origH = String(trimmedWordA.h);
+          canvasA.style.width = `${Math.round(trimmedWordA.w * state.scaleFactor)}px`;
+          canvasA.style.height = `${Math.round(trimmedWordA.h * state.scaleFactor)}px`;
+          drawWordTokenCanvas(canvasA, trimmedWordA, inkThreshold);
+
+          // Andre del fra starten av neste linje ("bad")
+          const canvasB = document.createElement("canvas");
+          canvasB.dataset.origW = String(nextWord.w);
+          canvasB.dataset.origH = String(nextWord.h);
+          canvasB.style.width = `${Math.round(nextWord.w * state.scaleFactor)}px`;
+          canvasB.style.height = `${Math.round(nextWord.h * state.scaleFactor)}px`;
+          drawWordTokenCanvas(canvasB, nextWord, inkThreshold);
+
+          mergedToken.addEventListener("pointerenter", () => {
+            state.hoveredWordId = word.id;
+            drawOverlayBoxes();
+          });
+          mergedToken.addEventListener("pointerleave", () => {
+            if (state.hoveredWordId === word.id) {
+              state.hoveredWordId = null;
+              drawOverlayBoxes();
+            }
+          });
+          mergedToken.addEventListener("click", () => {
+            document
+              .querySelectorAll(".word-token.active-word")
+              .forEach((el) => el.classList.remove("active-word"));
+            mergedToken.classList.add("active-word");
+            state.hoveredWordId = word.id;
+            state.selectedWord = word;
+            drawOverlayBoxes();
+            updateWordLoupe(word, inkThreshold);
+          });
+
+          mergedToken.appendChild(canvasA);
+          mergedToken.appendChild(canvasB);
+          fragment.appendChild(mergedToken);
+        }
       }
     });
 
@@ -2292,7 +2543,9 @@
     statsBar.innerHTML = `
       <span class="stat-chip">📏 ${cropLabel}</span>
       <span class="stat-chip">☰ ${lineCount} tekstlinjer</span>
-      <span class="stat-chip">🔤 ${wordCount} ord-brikker</span>
+      <span class="stat-chip">🔤 ${wordCount} ord</span>
+      <span class="stat-chip">¶ ${state.detectedParagraphCount} avsnitt</span>
+      <span class="stat-chip">🔗 ${state.detectedHyphenJoinCount} sammensydde orddelinger</span>
     `;
     updateZenPageLabel();
   }
@@ -2484,6 +2737,13 @@
     adaptiveShadowToggle.addEventListener("change", () => {
       state.useAdaptiveShadow = adaptiveShadowToggle.checked;
       ingestCanvasSource();
+    });
+  }
+
+  if (mergeHyphensToggle) {
+    mergeHyphensToggle.addEventListener("change", () => {
+      state.mergeHyphens = mergeHyphensToggle.checked;
+      runSegmentationAndRender();
     });
   }
 
