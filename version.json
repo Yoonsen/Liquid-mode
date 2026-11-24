@@ -1,5 +1,5 @@
 {
-  "version": "1.2.1",
-  "updatedAt": "2026-11-24T00:58:00+01:00",
-  "summary": "Kompakt startskala (65 %, ned til 35 % min) slik at Liquid-flyt og forstørrelse fungerer som to uavhengige faktorer."
+  "version": "1.3.0",
+  "updatedAt": "2026-11-24T01:08:00+01:00",
+  "summary": "Kindle-inspirert lesegrensesnitt (boksiden i sentrum, trykk i øvre kant for Aa-meny, trykk i sidemarger for å bla) og automatisk caching av neste side!"
 }

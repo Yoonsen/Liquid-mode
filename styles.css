@@ -457,12 +457,6 @@ kbd {
   border-color: transparent;
 }
 
-@media (min-width: 62em) {
-  .mobile-view-tabs {
-    display: none;
-  }
-}
-
 .workspace-grid {
   max-inline-size: 96rem;
   margin: 0 auto;
@@ -473,19 +467,26 @@ kbd {
 }
 
 @media (min-width: 62em) {
-  .workspace-grid {
+  .workspace-grid[data-active-view="both"] {
     grid-template-columns: minmax(22rem, 42%) 1fr;
   }
 }
 
-/* Mobil-filtrering av paneler når brukeren velger kun Liquid eller kun Original */
-@media (max-width: 61.99em) {
-  .workspace-grid[data-active-view="liquid"] .source-panel {
-    display: none;
-  }
-  .workspace-grid[data-active-view="source"] .liquid-panel {
-    display: none;
-  }
+/* Filtrering av paneler (både på mobil og desktop: i Kindle-modus er boksiden i sentrum!) */
+.workspace-grid[data-active-view="liquid"] {
+  max-inline-size: 62rem;
+}
+
+.workspace-grid[data-active-view="liquid"] .source-panel {
+  display: none;
+}
+
+.workspace-grid[data-active-view="source"] {
+  max-inline-size: 62rem;
+}
+
+.workspace-grid[data-active-view="source"] .liquid-panel {
+  display: none;
 }
 
 /* ==========================================================================
@@ -931,27 +932,75 @@ kbd {
   justify-content: space-between;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.45rem 0.9rem;
-  background-color: var(--bg-subtle);
+  padding: 0.45rem 1.125rem;
+  background-color: var(--bg-panel);
   border-bottom: 1px solid var(--border-color);
-  font-size: 0.8rem;
+  font-size: 0.82rem;
 }
 
 .zen-floating-bar[hidden] {
   display: none;
 }
 
+.zen-bar-left,
+.zen-bar-right {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+}
+
 .zen-page-indicator {
   font-weight: 700;
-  color: var(--brand-color);
+  color: var(--text-primary);
 }
 
-.zen-hint {
+.cache-status-pill {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.1rem 0.48rem;
+  border-radius: 999px;
+  background-color: var(--bg-subtle);
   color: var(--text-muted);
-  font-size: 0.76rem;
+  border: 1px solid var(--border-color);
+  transition: color 0.15s ease, border-color 0.15s ease;
 }
 
-/* Når brukeren trykker i leseflaten (menus-collapsed), skjules verktøylinjer for full leseflate */
+.cache-status-pill.is-ready {
+  color: #15803d;
+  border-color: rgba(21, 128, 61, 0.35);
+}
+
+.aa-pill-btn {
+  background-color: var(--brand-color);
+  color: var(--brand-contrast);
+  border-color: transparent;
+  padding: 0.25rem 0.65rem;
+}
+
+.kindle-book-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.footer-left {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.footer-right {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+/* Når brukeren er i Kindle-lesemodus (menus-collapsed), skjules alle oppsettspaneler
+   slik at selve boksiden står helt i sentrum! */
 body.menus-collapsed .app-header,
 body.menus-collapsed .iiif-book-bar,
 body.menus-collapsed .mobile-view-tabs,
@@ -959,8 +1008,13 @@ body.menus-collapsed .reader-collapsible-ui {
   display: none !important;
 }
 
+body.menus-collapsed .workspace-grid {
+  margin-top: 0.5rem;
+}
+
 body.menus-collapsed .liquid-reader {
-  max-block-size: 88vh;
+  max-block-size: 86vh;
+  padding: clamp(1.25rem, 4cqi, 2.75rem);
 }
 
 /* Avsnittsskille når originalen har ekstra stor linjeavstand */

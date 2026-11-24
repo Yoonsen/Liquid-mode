@@ -6,9 +6,9 @@
   <meta name="color-scheme" content="light dark" />
   <meta name="text-scale" content="scale" />
   <title>Pixel-Liquid Mode — Universell leseflyt uten OCR</title>
-  <link rel="stylesheet" href="styles.css?v=7" />
+  <link rel="stylesheet" href="styles.css?v=8" />
 </head>
-<body>
+<body class="menus-collapsed">
   <!-- OPPDATERINGSVARSEL (som i neo-dhlab: varsler når ny versjon er rullet ut på GitHub Pages) -->
   <div id="update-banner" class="update-banner" role="status" aria-live="polite" hidden>
     <div class="update-banner-text">
@@ -26,9 +26,9 @@
     <div class="brand-group">
       <div class="brand-badge" aria-hidden="true">≈</div>
       <div>
-          <div class=" title-with-version">
+        <div class="title-with-version">
           <h1>Pixel-Liquid Mode</h1>
-          <span id="app-version-badge" class="version-pill" title="Installert versjon">v1.2.1</span>
+          <span id="app-version-badge" class="version-pill" title="Installert versjon">v1.3.0</span>
         </div>
         <p class="subtitle">Reflow av skannet tekst og IIIF-bøker på piksel-nivå — helt uten OCR</p>
       </div>
@@ -94,13 +94,13 @@
     </div>
   </section>
 
-  <nav class="mobile-view-tabs" aria-label="Visningsmodus på liten skjerm">
-    <button type="button" class="tab-btn active" data-view-target="both">Begge</button>
-    <button type="button" class="tab-btn" data-view-target="liquid">Kun Liquid-leser</button>
-    <button type="button" class="tab-btn" data-view-target="source">Original &amp; Utsnitt</button>
+  <nav class="mobile-view-tabs" aria-label="Visningsmodus">
+    <button type="button" class="tab-btn active" data-view-target="liquid">📖 Kun Boksiden (Kindle-modus)</button>
+    <button type="button" class="tab-btn" data-view-target="both">⧉ Side-ved-side (Original + Liquid)</button>
+    <button type="button" class="tab-btn" data-view-target="source">✂️ Kun Original &amp; Utsnitt</button>
   </nav>
 
-  <main class="workspace-grid" id="workspace-grid" data-active-view="both">
+  <main class="workspace-grid" id="workspace-grid" data-active-view="liquid">
     <!-- VENSTRE PANEL: KILDEBILDE OG SEGMENTERINGSBOKSER -->
     <section class="panel source-panel" aria-labelledby="source-heading">
       <div class="panel-header">
@@ -275,11 +275,18 @@
         </div>
       </details>
 
-      <!-- FLYTENDE MINIBAR SOM VISES NÅR MENYER ER SKJULT MED TRYKK (ZEN / MOBIL LESEMODUS) -->
-      <div id="zen-floating-bar" class="zen-floating-bar" hidden>
-        <span id="zen-page-indicator" class="zen-page-indicator">Lesemodus</span>
-        <span class="zen-hint">Trykk i leseflaten for menyer • Sveip for å bla</span>
-        <button type="button" id="zen-restore-btn" class="mini-btn">Vis menyer ▾</button>
+      <!-- KINDLE-INSPIRERT TOPPLIST SOM ALLTID ER TILGJENGELIG NÅR MENYER ER SKJULT -->
+      <div id="zen-floating-bar" class="zen-floating-bar">
+        <div class="zen-bar-left">
+          <span id="zen-page-indicator" class="zen-page-indicator">Sult — Knut Hamsun (1890)</span>
+          <span id="cache-status-pill" class="cache-status-pill" title="Neste side forhåndslastes i minnet for øyeblikkelig blading">⚡ Cacher neste side...</span>
+        </div>
+        <div class="zen-bar-right">
+          <button type="button" id="zen-prev-btn" class="mini-btn" title="Forrige side (eller trykk i venstre marg)">←</button>
+          <button type="button" id="zen-next-btn" class="mini-btn" title="Neste side (eller trykk i høyre marg)">→</button>
+          <button type="button" id="zen-split-btn" class="mini-btn" title="Vis/skjul originalbilde og utsnitt ved siden av">✂️ Original</button>
+          <button type="button" id="zen-restore-btn" class="mini-btn aa-pill-btn" title="Åpne skrift-, kilde- og visningsmeny (eller trykk i øvre kant av siden)">Aa Meny ▾</button>
+        </div>
       </div>
 
       <!-- SELVE LIQUID-FLATEN DER ORD-BILDENE WRAPPER -->
@@ -291,13 +298,16 @@
         aria-label="Flytende piksel-tekst"
       ></div>
 
-      <footer class="panel-footer reader-footer">
-        <span class="tip-badge">Tips:</span>
-        <span>Trykk på bakgrunnen i leseflaten for å vise/skjule menyer. Sveip til venstre/høyre for å bla i boken!</span>
+      <footer class="panel-footer reader-footer kindle-book-footer">
+        <div class="footer-left">
+          <span class="tip-badge">Kindle-navigering:</span>
+          <span>Trykk i <strong>øvre kant / midten</strong> for meny (Aa) • Trykk i <strong>venstre/høyre marg</strong> eller <strong>sveip</strong> for å bla</span>
+        </div>
+        <div class="footer-right" id="book-progress-label"></div>
       </footer>
     </section>
   </main>
 
-  <script src="app.js?v=7" defer></script>
+  <script src="app.js?v=8" defer></script>
 </body>
 </html>

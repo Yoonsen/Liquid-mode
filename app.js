@@ -50,6 +50,11 @@
   const zenFloatingBar = document.getElementById("zen-floating-bar");
   const zenPageIndicator = document.getElementById("zen-page-indicator");
   const zenRestoreBtn = document.getElementById("zen-restore-btn");
+  const zenPrevBtn = document.getElementById("zen-prev-btn");
+  const zenNextBtn = document.getElementById("zen-next-btn");
+  const zenSplitBtn = document.getElementById("zen-split-btn");
+  const cacheStatusPill = document.getElementById("cache-status-pill");
+  const bookProgressLabel = document.getElementById("book-progress-label");
 
   const scaleSlider = document.getElementById("scale-slider");
   const scaleOutput = document.getElementById("scale-output");
@@ -109,9 +114,14 @@
     iiifBook: null, // { title, pages: [{ label, serviceId }], currentIndex }
   };
 
-  const APP_VERSION = "1.2.1";
+  const APP_VERSION = "1.3.0";
   const APP_RELEASE_SUMMARY =
-    "Kompakt startskala (65 %, ned til 35 % min) slik at Liquid-flyt og forstørrelse fungerer som to uavhengige faktorer.";
+    "Kindle-inspirert lesegrensesnitt (boksiden i sentrum, trykk i øvre kant for Aa-meny, trykk i sidemarger for å bla) og automatisk caching av neste side!";
+
+  // Hurtigminne (RAM-cache) for ferdig nedlastede IIIF-boksider (URL -> HTMLImageElement)
+  const pageImageCache = new Map();
+  const inflightImageLoads = new Map();
+  const MAX_CACHED_PAGES = 14;
 
   // =========================================================================
   // 1. SYNTETISKE EKSEMPELSIDER & ÅPNE IIIF-KILDER (Nasjonalbiblioteket)
@@ -365,81 +375,129 @@
   // 2. INNLASTING FRA FIL, UTKLIPPSTAVLE OG IIIF (NASJONALBIBLIOTEKET)
   // =========================================================================
 
-  function loadExternalImageUrl(url, fallbackNotice) {
-    statsBar.innerHTML = `<span class="stat-chip">Henter bilde fra åpen kilde...</span>`;
-    const img = new Image();
-    img.crossOrigin = "anonymous";
+  function storeInImageCache(url, img) {
+    if (!url || url.startsWith("blob:")) return;
+    if (pageImageCache.has(url)) {
+      pageImageCache.delete(url);
+    }
+    pageImageCache.set(url, img);
+    if (pageImageCache.size > MAX_CACHED_PAGES) {
+      const oldestKey = pageImageCache.keys().next().value;
+      pageImageCache.delete(oldestKey);
+    }
+  }
 
-    img.onload = () => {
-      // Skaler ned svært store bilder til en hensiktsmessig arbeidsoppløsning (maks 1600px bredde)
-      const maxDim = 1500;
-      let targetW = img.naturalWidth || img.width;
-      let targetH = img.naturalHeight || img.height;
-      if (targetW > maxDim) {
-        const ratio = maxDim / targetW;
-        targetW = Math.round(targetW * ratio);
-        targetH = Math.round(targetH * ratio);
+  function fetchOrGetCachedImage(url) {
+    if (pageImageCache.has(url)) {
+      const cached = pageImageCache.get(url);
+      if (cached.complete && cached.naturalWidth > 0) {
+        return Promise.resolve({ img: cached, fromCache: true });
       }
+    }
+    if (inflightImageLoads.has(url)) {
+      return inflightImageLoads.get(url);
+    }
 
-      sourceCanvas.width = targetW;
-      sourceCanvas.height = targetH;
-      overlayCanvas.width = targetW;
-      overlayCanvas.height = targetH;
+    const promise = new Promise((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => {
+        inflightImageLoads.delete(url);
+        storeInImageCache(url, img);
+        resolve({ img, fromCache: false });
+      };
+      img.onerror = (err) => {
+        inflightImageLoads.delete(url);
+        reject(err);
+      };
+      img.src = url;
+    });
 
-      sourceCtx.fillStyle = "#ffffff";
-      sourceCtx.fillRect(0, 0, targetW, targetH);
-      sourceCtx.drawImage(img, 0, 0, targetW, targetH);
+    inflightImageLoads.set(url, promise);
+    return promise;
+  }
 
-      // Lagre urotert master-kopi for tapsfri deskew
-      rawMasterCanvas.width = targetW;
-      rawMasterCanvas.height = targetH;
-      rawMasterCtx.drawImage(sourceCanvas, 0, 0);
-      state.deskewAngle = 0;
-      if (deskewSlider) {
-        deskewSlider.value = "0";
-        deskewOutput.textContent = "0.0°";
-      }
+  function applyLoadedImageToCanvases(img) {
+    // Skaler ned svært store bilder til en hensiktsmessig arbeidsoppløsning (maks 1500px bredde)
+    const maxDim = 1500;
+    let targetW = img.naturalWidth || img.width;
+    let targetH = img.naturalHeight || img.height;
+    if (targetW > maxDim) {
+      const ratio = maxDim / targetW;
+      targetW = Math.round(targetW * ratio);
+      targetH = Math.round(targetH * ratio);
+    }
 
-      // Hvis brukeren allerede har justert utsnittet i en bok, behold det relative utsnittet
-      // mellom sidene! Ellers bruk en svært snill 2.5% ytterkant på IIIF-bøker slik at
-      // første/siste ord aldri klippes bort på pocketbøker.
-      if (state.iiifBook) {
-        if (state.savedCropRatio) {
-          state.cropRect = {
-            x: Math.round(targetW * state.savedCropRatio.rx),
-            y: Math.round(targetH * state.savedCropRatio.ry),
-            w: Math.round(targetW * state.savedCropRatio.rw),
-            h: Math.round(targetH * state.savedCropRatio.rh),
-          };
-        } else {
-          state.cropRect = {
-            x: Math.round(targetW * 0.025),
-            y: Math.round(targetH * 0.035),
-            w: Math.round(targetW * 0.95),
-            h: Math.round(targetH * 0.93),
-          };
-        }
-        resetCropBtn.disabled = false;
+    sourceCanvas.width = targetW;
+    sourceCanvas.height = targetH;
+    overlayCanvas.width = targetW;
+    overlayCanvas.height = targetH;
+
+    sourceCtx.fillStyle = "#ffffff";
+    sourceCtx.fillRect(0, 0, targetW, targetH);
+    sourceCtx.drawImage(img, 0, 0, targetW, targetH);
+
+    // Lagre urotert master-kopi for tapsfri deskew
+    rawMasterCanvas.width = targetW;
+    rawMasterCanvas.height = targetH;
+    rawMasterCtx.drawImage(sourceCanvas, 0, 0);
+    state.deskewAngle = 0;
+    if (deskewSlider) {
+      deskewSlider.value = "0";
+      deskewOutput.textContent = "0.0°";
+    }
+
+    // Hvis brukeren allerede har justert utsnittet i en bok, behold det relative utsnittet
+    // mellom sidene! Ellers bruk en svært snill 2.5% ytterkant på IIIF-bøker slik at
+    // første/siste ord aldri klippes bort på pocketbøker.
+    if (state.iiifBook) {
+      if (state.savedCropRatio) {
+        state.cropRect = {
+          x: Math.round(targetW * state.savedCropRatio.rx),
+          y: Math.round(targetH * state.savedCropRatio.ry),
+          w: Math.round(targetW * state.savedCropRatio.rw),
+          h: Math.round(targetH * state.savedCropRatio.rh),
+        };
       } else {
-        state.cropRect = null;
-        resetCropBtn.disabled = true;
+        state.cropRect = {
+          x: Math.round(targetW * 0.025),
+          y: Math.round(targetH * 0.035),
+          w: Math.round(targetW * 0.95),
+          h: Math.round(targetH * 0.93),
+        };
       }
-      ingestCanvasSource();
-      liquidReader.scrollTop = 0;
-    };
+      resetCropBtn.disabled = false;
+    } else {
+      state.cropRect = null;
+      resetCropBtn.disabled = true;
+    }
+    ingestCanvasSource();
+    liquidReader.scrollTop = 0;
+  }
 
-    img.onerror = () => {
-      statsBar.innerHTML = `
-        <span class="stat-chip" style="color: var(--accent-warm)">
-          Kunne ikke hente IIIF-bildet direkte (nettverk eller CORS). Viser innebygd skanning i stedet.
-        </span>
-      `;
-      if (fallbackNotice) {
-        generateSyntheticScan("synthetic-gothic");
-      }
-    };
+  function loadExternalImageUrl(url, fallbackNotice, onReadyCallback = null) {
+    const isCached = pageImageCache.has(url);
+    if (!isCached) {
+      statsBar.innerHTML = `<span class="stat-chip">Henter bilde fra åpen kilde...</span>`;
+    }
 
-    img.src = url;
+    fetchOrGetCachedImage(url)
+      .then(({ img }) => {
+        applyLoadedImageToCanvases(img);
+        if (typeof onReadyCallback === "function") {
+          onReadyCallback();
+        }
+      })
+      .catch(() => {
+        statsBar.innerHTML = `
+          <span class="stat-chip" style="color: var(--accent-warm)">
+            Kunne ikke hente IIIF-bildet direkte (nettverk eller CORS). Viser innebygd skanning i stedet.
+          </span>
+        `;
+        if (fallbackNotice) {
+          generateSyntheticScan("synthetic-gothic");
+        }
+      });
   }
 
   /**
@@ -678,24 +736,86 @@
       state.iiifBook.currentIndex >= state.iiifBook.pages.length - 1;
   }
 
+  function getIiifPageImageUrl(page) {
+    if (!page || !page.serviceId) return "";
+    const baseService = page.serviceId.replace(/\/$/, "");
+    return baseService.endsWith(".jpg")
+      ? baseService
+      : `${baseService}/full/1200,/0/native.jpg`;
+  }
+
+  function prefetchAdjacentPages() {
+    if (!state.iiifBook) {
+      if (cacheStatusPill) cacheStatusPill.hidden = true;
+      return;
+    }
+
+    const pages = state.iiifBook.pages;
+    const curr = state.iiifBook.currentIndex;
+    const nextPage = pages[curr + 1];
+    const nextPage2 = pages[curr + 2];
+    const prevPage = pages[curr - 1];
+
+    if (!nextPage) {
+      if (cacheStatusPill) {
+        cacheStatusPill.hidden = false;
+        cacheStatusPill.textContent = "Siste side";
+        cacheStatusPill.classList.add("is-ready");
+      }
+      return;
+    }
+
+    const nextUrl = getIiifPageImageUrl(nextPage);
+    if (pageImageCache.has(nextUrl)) {
+      if (cacheStatusPill) {
+        cacheStatusPill.hidden = false;
+        cacheStatusPill.textContent = "⚡ Neste side klar i minnet";
+        cacheStatusPill.classList.add("is-ready");
+      }
+    } else if (cacheStatusPill) {
+      cacheStatusPill.hidden = false;
+      cacheStatusPill.textContent = "⏳ Cacher neste side...";
+      cacheStatusPill.classList.remove("is-ready");
+    }
+
+    // 1. Forhåndslast neste side (høyest prioritet)
+    fetchOrGetCachedImage(nextUrl)
+      .then(() => {
+        if (state.iiifBook && state.iiifBook.currentIndex === curr && cacheStatusPill) {
+          cacheStatusPill.textContent = "⚡ Neste side klar i minnet";
+          cacheStatusPill.classList.add("is-ready");
+        }
+        // 2. Når neste side er i boks, forhåndslast også 2 sider frem og forrige side
+        if (nextPage2) {
+          fetchOrGetCachedImage(getIiifPageImageUrl(nextPage2)).catch(() => {});
+        }
+        if (prevPage) {
+          fetchOrGetCachedImage(getIiifPageImageUrl(prevPage)).catch(() => {});
+        }
+      })
+      .catch(() => {});
+  }
+
   function loadCurrentIiifBookPage() {
     if (!state.iiifBook) return;
     const page = state.iiifBook.pages[state.iiifBook.currentIndex];
     if (!page) return;
 
-    prevPageBtn.disabled = state.iiifBook.currentIndex <= 0;
-    nextPageBtn.disabled =
-      state.iiifBook.currentIndex >= state.iiifBook.pages.length - 1;
+    const atStart = state.iiifBook.currentIndex <= 0;
+    const atEnd = state.iiifBook.currentIndex >= state.iiifBook.pages.length - 1;
+    prevPageBtn.disabled = atStart;
+    nextPageBtn.disabled = atEnd;
+    if (zenPrevBtn) zenPrevBtn.disabled = atStart;
+    if (zenNextBtn) zenNextBtn.disabled = atEnd;
     pageSelect.value = String(state.iiifBook.currentIndex);
 
-    // Be om 1200px bredde fra Nasjonalbibliotekets IIIF Image API
-    const baseService = page.serviceId.replace(/\/$/, "");
-    const imageUrl = baseService.endsWith(".jpg")
-      ? baseService
-      : `${baseService}/full/1200,/0/native.jpg`;
+    updateZenPageLabel();
 
+    const imageUrl = getIiifPageImageUrl(page);
     iiifUrlInput.value = imageUrl;
-    loadExternalImageUrl(imageUrl, false);
+    loadExternalImageUrl(imageUrl, false, () => {
+      prefetchAdjacentPages();
+    });
   }
 
   // =========================================================================
@@ -1826,6 +1946,7 @@
       <span class="stat-chip">☰ ${lineCount} tekstlinjer</span>
       <span class="stat-chip">🔤 ${wordCount} ord-brikker</span>
     `;
+    updateZenPageLabel();
   }
 
   // =========================================================================
@@ -2236,16 +2357,28 @@
   });
 
   // =========================================================================
-  // 8. MOBILVENNLIG LESEMODUS: TRYKK FOR MENYER & SVEIP FOR NESTE/FORRIGE SIDE
+  // 8. KINDLE-INSPIRERT LESEMODUS: TRYKKSONER, TOPPLIST & SVEIP
   // =========================================================================
 
   function updateZenPageLabel() {
-    if (!zenPageIndicator) return;
     if (state.iiifBook) {
       const page = state.iiifBook.pages[state.iiifBook.currentIndex];
-      zenPageIndicator.textContent = `${state.iiifBook.title} • ${page ? page.label : ""}`;
+      const total = state.iiifBook.pages.length;
+      const idx = state.iiifBook.currentIndex + 1;
+      const pct = Math.round((idx / Math.max(1, total)) * 100);
+      if (zenPageIndicator) {
+        zenPageIndicator.textContent = `${state.iiifBook.title} • ${page ? page.label : ""}`;
+      }
+      if (bookProgressLabel) {
+        bookProgressLabel.textContent = `Oppslag ${idx} av ${total} (${pct}%)`;
+      }
     } else {
-      zenPageIndicator.textContent = "Lesemodus";
+      if (zenPageIndicator) {
+        zenPageIndicator.textContent = "Pixel-Liquid Mode • Lesemodus";
+      }
+      if (bookProgressLabel) {
+        bookProgressLabel.textContent = `${state.detectedWords.length} ord`;
+      }
     }
   }
 
@@ -2256,13 +2389,10 @@
         : !document.body.classList.contains("menus-collapsed");
 
     document.body.classList.toggle("menus-collapsed", isCollapsed);
-    if (zenFloatingBar) {
-      if (isCollapsed) {
-        updateZenPageLabel();
-        zenFloatingBar.removeAttribute("hidden");
-      } else {
-        zenFloatingBar.setAttribute("hidden", "");
-      }
+    updateZenPageLabel();
+
+    if (zenRestoreBtn) {
+      zenRestoreBtn.textContent = isCollapsed ? "Aa Meny ▾" : "Lukk meny ▴";
     }
     if (zenToggleBtn) {
       zenToggleBtn.classList.toggle("active", isCollapsed);
@@ -2274,7 +2404,25 @@
     zenToggleBtn.addEventListener("click", () => toggleReaderMenus());
   }
   if (zenRestoreBtn) {
-    zenRestoreBtn.addEventListener("click", () => toggleReaderMenus(false));
+    zenRestoreBtn.addEventListener("click", () => toggleReaderMenus());
+  }
+  if (zenPrevBtn) {
+    zenPrevBtn.addEventListener("click", () => turnBookPage(-1));
+  }
+  if (zenNextBtn) {
+    zenNextBtn.addEventListener("click", () => turnBookPage(1));
+  }
+  if (zenSplitBtn) {
+    zenSplitBtn.addEventListener("click", () => {
+      const currentView = workspaceGrid.dataset.activeView;
+      const nextView = currentView === "liquid" ? "both" : "liquid";
+      workspaceGrid.dataset.activeView = nextView;
+      mobileTabButtons.forEach((b) => {
+        b.classList.toggle("active", b.dataset.viewTarget === nextView);
+      });
+      zenSplitBtn.textContent =
+        nextView === "both" ? "📖 Kun bokside" : "✂️ Original";
+    });
   }
 
   function turnBookPage(delta) {
@@ -2287,7 +2435,7 @@
     return true;
   }
 
-  // Sveip (venstre/høyre, eller opp ved bunnen / ned ved toppen) og trykk for menyer i leseflaten
+  // Sveip (venstre/høyre, eller opp ved bunnen / ned ved toppen) og Kindle-trykksoner i leseflaten
   let touchStartX = 0;
   let touchStartY = 0;
   let touchStartTime = 0;
@@ -2334,12 +2482,32 @@
       }
     }
 
-    // 3. Kort trykk på bakgrunnen i leseflaten (utenom når brukeren klikker på et ord for lupe)
-    // veksler menyer av/på!
-    if (absX < 12 && absY < 12 && dt < 350) {
+    // 3. Kindle-trykksoner ved kort trykk/klikk på siden:
+    // - Trykk i venstre marg (0..14% av bredden) -> Forrige side
+    // - Trykk i høyre marg (86..100% av bredden) -> Neste side
+    // - Trykk i øvre kant (topp 22% av høyden) eller på bakgrunnen i midten -> Veksle Aa-meny!
+    if (absX < 12 && absY < 12 && dt < 380) {
+      const rect = liquidReader.getBoundingClientRect();
+      const relX = (e.clientX - rect.left) / Math.max(1, rect.width);
+      const relY = (e.clientY - rect.top) / Math.max(1, rect.height);
       const clickedWord = e.target.closest(".word-token");
-      if (!clickedWord) {
-        toggleReaderMenus();
+      const menusAreHidden = document.body.classList.contains("menus-collapsed");
+
+      // Når menyene er skjult (Kindle-lesemodus), fungerer trykksonene overalt (også om man treffer et ord)
+      if (menusAreHidden || !clickedWord) {
+        if (relY <= 0.20) {
+          // Øvre kant -> Åpne/lukk meny
+          toggleReaderMenus();
+        } else if (relX <= 0.14 && state.iiifBook) {
+          // Venstre marg -> Forrige side
+          turnBookPage(-1);
+        } else if (relX >= 0.86 && state.iiifBook) {
+          // Høyre marg -> Neste side
+          turnBookPage(1);
+        } else {
+          // Midtsonen -> Åpne/lukk meny
+          toggleReaderMenus();
+        }
       }
     }
   });
@@ -2354,14 +2522,6 @@
       if (turnBookPage(-1)) e.preventDefault();
     }
   });
-
-  // På smale mobilskjermer: start gjerne direkte i Liquid-leseren
-  if (window.innerWidth < 680) {
-    workspaceGrid.dataset.activeView = "liquid";
-    mobileTabButtons.forEach((b) => {
-      b.classList.toggle("active", b.dataset.viewTarget === "liquid");
-    });
-  }
 
   // =========================================================================
   // 9. OPPDATERINGSMELDING (SOM I NEO-DHLAB)
