@@ -6,7 +6,9 @@
   <meta name="color-scheme" content="light dark" />
   <meta name="text-scale" content="scale" />
   <title>Pixel-Liquid Mode — Bibliotek &amp; Leseflate uten OCR</title>
-  <link rel="stylesheet" href="styles.css?v=12" />
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <link rel="apple-touch-icon" href="favicon.svg" />
+  <link rel="stylesheet" href="styles.css?v=13" />
 </head>
 <body data-app-screen="library">
   <!-- OPPDATERINGSVARSEL (varsler når ny versjon er rullet ut på GitHub Pages) -->
@@ -28,11 +30,13 @@
   <div id="library-view" class="library-view">
     <header class="library-header">
       <div class="brand-group">
-        <div class="brand-badge" aria-hidden="true">≈</div>
+        <div class="brand-badge" aria-hidden="true">
+          <img src="favicon.svg" alt="" width="42" height="42" />
+        </div>
         <div>
           <div class="title-with-version">
             <h1>Pixel-Liquid Mode</h1>
-            <span id="app-version-badge" class="version-pill" title="Installert versjon">v1.5.0</span>
+            <span id="app-version-badge" class="version-pill" title="Installert versjon">v1.5.1</span>
           </div>
           <p class="subtitle">Universell leseflyt på pikselnivå — helt uten OCR</p>
         </div>
@@ -219,25 +223,15 @@
        DEL 2: DEDIKERT BOKLESER (100% skjermflate + tidsstyrte piller ved trykk)
        ======================================================================== -->
   <div id="reader-view" class="reader-view">
-    <!-- FLYTENDE TOPP-PILLER (vises i 4 sekunder når brukeren trykker på siden) -->
+    <!-- FLYTENDE TOPP-PILLE (Slank og mobilvennlig: kun ← Bibliotek og Aa Utseende!) -->
     <div id="hud-top-pills" class="hud-top-pills" role="toolbar" aria-label="Hurtigvalg for bokleser">
       <button type="button" id="back-to-library-btn" class="hud-pill-btn">
         ← Bibliotek
       </button>
 
-      <div class="hud-center-group">
-        <span id="zen-page-indicator" class="hud-book-title">Sult (1890)</span>
-        <span id="cache-status-pill" class="cache-status-pill" title="Neste side forhåndslastes i minnet">⚡ Klar</span>
-      </div>
-
-      <div class="hud-right-group">
-        <button type="button" id="open-crop-modal-btn" class="hud-pill-btn" aria-pressed="false" title="Juster utsnitt eller rett opp skjev skanning">
-          ✂️ Utsnitt
-        </button>
-        <button type="button" id="open-aa-sheet-btn" class="hud-pill-btn hud-aa-btn" aria-expanded="false" title="Juster tekststørrelse, blekkfylde, fargetema og tracing">
-          Aa Utseende
-        </button>
-      </div>
+      <button type="button" id="open-aa-sheet-btn" class="hud-pill-btn hud-aa-btn" aria-expanded="false" title="Juster tekststørrelse, blekkfylde, utsnitt, fargetema og tracing">
+        Aa Utseende
+      </button>
     </div>
 
     <!-- FLYTENDE BUNN-PILLE (Sideblading i bok, vises sammen med topp-pillene) -->
@@ -249,11 +243,20 @@
       <button type="button" id="next-page-btn" class="hud-pill-btn">Neste →</button>
     </div>
 
-    <!-- SKUFF / POPOVER FOR "Aa Utseende" (Skriftstørrelse, Blekkfylde, Tema og LAB) -->
+    <!-- SKUFF / POPOVER FOR "Aa Utseende" (Skriftstørrelse, Blekkfylde, Utsnitt, Tema og LAB) -->
     <aside id="aa-settings-sheet" class="aa-settings-sheet" hidden aria-label="Utseende og skriftinnstillinger">
       <div class="sheet-header">
-        <strong>Aa Skrift, Tema &amp; Tracing</strong>
-        <button type="button" id="close-aa-sheet-btn" class="mini-btn">Ferdig ✓</button>
+        <div class="sheet-title-group">
+          <strong>Aa Utseende &amp; Tekst</strong>
+          <span id="zen-page-indicator" class="hud-book-title" hidden></span>
+          <span id="cache-status-pill" class="cache-status-pill" title="Neste side forhåndslastes i minnet">⚡ Klar</span>
+        </div>
+        <div class="sheet-actions-group">
+          <button type="button" id="open-crop-modal-btn" class="secondary-btn" aria-pressed="false" title="Juster utsnitt eller rett opp skjev skanning">
+            ✂️ Utsnitt &amp; Skjevhet
+          </button>
+          <button type="button" id="close-aa-sheet-btn" class="primary-btn">Ferdig ✓</button>
+        </div>
       </div>
 
       <div class="theme-pills" role="group" aria-label="Fargetema">
@@ -469,6 +472,6 @@
     <button type="button" id="zen-split-btn" hidden></button>
   </div>
 
-  <script src="app.js?v=12" defer></script>
+  <script src="app.js?v=13" defer></script>
 </body>
 </html>

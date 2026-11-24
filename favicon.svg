@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1e40af" />
+      <stop offset="100%" stop-color="#1d4ed8" />
+    </linearGradient>
+  </defs>
+  <!-- Avrundet bokside-bakgrunn -->
+  <rect x="2" y="2" width="60" height="60" rx="15" fill="url(#bg)" />
+  <rect x="4" y="4" width="56" height="56" rx="13" fill="none" stroke="#93c5fd" stroke-opacity="0.28" stroke-width="1.5" />
+
+  <!-- Øverste rad: 3 utklipte piksel-ordbrikker (Pixel tokens) -->
+  <rect x="11" y="14" width="13" height="6.5" rx="2" fill="#f6efe0" />
+  <rect x="28" y="14" width="16" height="6.5" rx="2" fill="#fbbf24" />
+  <rect x="48" y="14" width="6" height="6.5" rx="2" fill="#f6efe0" />
+
+  <!-- Midterste og nederste rad: Myke, flytende Liquid-bølger (≈) -->
+  <path
+    d="M 11 33 C 17 27, 25 27, 32 33 C 39 39, 47 39, 53 33"
+    fill="none"
+    stroke="#f6efe0"
+    stroke-width="5.5"
+    stroke-linecap="round"
+  />
+  <path
+    d="M 11 46 C 17 40, 25 40, 32 46 C 39 52, 47 52, 53 46"
+    fill="none"
+    stroke="#93c5fd"
+    stroke-width="5.5"
+    stroke-linecap="round"
+  />
+</svg>

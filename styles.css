@@ -246,10 +246,7 @@ body[data-app-screen="reader"] #library-view {
   inline-size: 2.6rem;
   block-size: 2.6rem;
   border-radius: 0.65rem;
-  background-color: var(--brand-color);
-  color: var(--brand-contrast);
-  font-weight: 800;
-  font-size: 1.55rem;
+  overflow: hidden;
   flex-shrink: 0;
 }
 
@@ -566,8 +563,10 @@ body[data-app-screen="reader"] #library-view {
 .hud-top-pills {
   top: max(0.75rem, env(safe-area-inset-top, 0px) + 0.4rem);
   transform: translate(-50%, -14px);
-  inline-size: min(95vw, 52rem);
-  justify-content: space-between;
+  inline-size: auto;
+  max-inline-size: 94vw;
+  justify-content: center;
+  gap: 0.55rem;
 }
 
 .hud-bottom-pills {
@@ -697,11 +696,21 @@ body[data-app-screen="reader"] #library-view {
 
 .sheet-header {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
+  gap: 0.5rem;
   padding: 0.75rem 1.1rem;
   border-bottom: 1px solid var(--border-color);
   font-size: 0.95rem;
+}
+
+.sheet-title-group,
+.sheet-actions-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
 }
 
 .aa-settings-sheet .theme-pills {

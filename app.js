@@ -122,9 +122,9 @@
     iiifBook: null, // { title, pages: [{ label, serviceId }], currentIndex }
   };
 
-  const APP_VERSION = "1.5.0";
+  const APP_VERSION = "1.5.1";
   const APP_RELEASE_SUMMARY =
-    "Fase 1: Lokal adaptiv terskel via 2D Integral Image (fjerner bokrygg-skygge på pocketbøker) og smart Auto-beskjæring av tekstsatsen!";
+    "Nytt Pixel-to-Liquid SVG-favicon og slanket mobilvennlig topp-pille i leseren (kun ← Bibliotek og Aa Utseende)!";
 
   // Hurtigminne (RAM-cache) for ferdig nedlastede IIIF-boksider (URL -> HTMLImageElement)
   const pageImageCache = new Map();

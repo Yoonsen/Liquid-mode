@@ -1,5 +1,5 @@
 {
-  "version": "1.5.0",
-  "updatedAt": "2026-11-24T19:40:00+01:00",
-  "summary": "Fase 1: Lokal adaptiv terskel via 2D Integral Image (fjerner bokrygg-skygge på pocketbøker) og smart Auto-beskjæring av tekstsatsen!"
+  "version": "1.5.1",
+  "updatedAt": "2026-11-24T21:14:00+01:00",
+  "summary": "Nytt Pixel-to-Liquid SVG-favicon og slanket mobilvennlig topp-pille i leseren (kun ← Bibliotek og Aa Utseende)!"
 }
