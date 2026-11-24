@@ -1,5 +1,5 @@
 {
-  "version": "1.3.0",
-  "updatedAt": "2026-11-24T01:08:00+01:00",
-  "summary": "Kindle-inspirert lesegrensesnitt (boksiden i sentrum, trykk i øvre kant for Aa-meny, trykk i sidemarger for å bla) og automatisk caching av neste side!"
+  "version": "1.4.0",
+  "updatedAt": "2026-11-24T14:40:00+01:00",
+  "summary": "Ny to-delt app: 1) Bibliotek med bokhylle og direkte NB.no-boksøk, og 2) 100 % fullskjerms bokleser med tidsstyrte flytende piller ved trykk!"
 }

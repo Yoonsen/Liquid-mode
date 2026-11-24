@@ -1,26 +1,27 @@
 /* ==========================================================================
-   Pixel-Liquid Mode — Moderne, tilgjengelig og responsivt stilark
+   Pixel-Liquid Mode v1.4 — To-delt arkitektur:
+   1. Bibliotek (Bokhylle, NB.no-søk, Kamera/Bildeopplasting)
+   2. Dedikert Bokleser (100% skjermflate + tidsstyrte flytende piller ved trykk)
    ========================================================================== */
 
 :root {
-  /* Fargepalett for lys og mørk modus med fallback */
-  --bg-page-light: #f4f1ea;
-  --bg-page-dark: #121316;
+  --bg-page-light: #f3EFE6;
+  --bg-page-dark: #111317;
 
   --bg-panel-light: #ffffff;
-  --bg-panel-dark: #1b1d22;
+  --bg-panel-dark: #1b1e24;
 
-  --bg-subtle-light: #ebe6dc;
-  --bg-subtle-dark: #252830;
+  --bg-subtle-light: #e8e2d5;
+  --bg-subtle-dark: #252932;
 
-  --text-primary-light: #1c1b18;
-  --text-primary-dark: #f0eee9;
+  --text-primary-light: #1c1a17;
+  --text-primary-dark: #f2efe9;
 
-  --text-muted-light: #5c584f;
-  --text-muted-dark: #a5a198;
+  --text-muted-light: #5c574f;
+  --text-muted-dark: #a6a198;
 
-  --border-light: #d8d1c5;
-  --border-dark: #323640;
+  --border-light: #d6cfc2;
+  --border-dark: #323742;
 
   --brand-light: #1d4ed8;
   --brand-dark: #60a5fa;
@@ -31,7 +32,6 @@
   --accent-warm-light: #b45309;
   --accent-warm-dark: #fbbf24;
 
-  /* Standardverdier (Lys modus) */
   --bg-page: var(--bg-page-light);
   --bg-panel: var(--bg-panel-light);
   --bg-subtle: var(--bg-subtle-light);
@@ -42,7 +42,6 @@
   --brand-contrast: var(--brand-contrast-light);
   --accent-warm: var(--accent-warm-light);
 
-  /* Fallback for eldre nettlesere uten light-dark() */
   @media (prefers-color-scheme: dark) {
     --bg-page: var(--bg-page-dark);
     --bg-panel: var(--bg-panel-dark);
@@ -55,7 +54,6 @@
     --accent-warm: var(--accent-warm-dark);
   }
 
-  /* Moderne light-dark() når støttet */
   @supports (color: light-dark(white, black)) {
     --bg-page: light-dark(var(--bg-page-light), var(--bg-page-dark));
     --bg-panel: light-dark(var(--bg-panel-light), var(--bg-panel-dark));
@@ -68,11 +66,8 @@
     --accent-warm: light-dark(var(--accent-warm-light), var(--accent-warm-dark));
   }
 
-  /* Viewport-wide fargeskjema og aksentfarge */
   color-scheme: light dark;
   accent-color: var(--brand-color);
-
-  /* Minimum størrelse på interaktive mål (WCAG 2.5.8 / 2.5.5) */
   --target-size: 24px;
 }
 
@@ -95,10 +90,6 @@ body {
   background-color: var(--bg-page);
   color: var(--text-primary);
   overflow-wrap: break-word;
-  padding-top: env(safe-area-inset-top, 0px);
-  padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px));
-  padding-left: max(0.75rem, env(safe-area-inset-left, 0px));
-  padding-right: max(0.75rem, env(safe-area-inset-right, 0px));
 }
 
 h1,
@@ -125,7 +116,6 @@ canvas {
   overflow-wrap: anywhere;
 }
 
-/* Minimum touch/click target size */
 :where(
   button,
   select,
@@ -155,27 +145,39 @@ canvas {
   align-items: center;
 }
 
-:where(.toolbar > :not(button, input, select, textarea, a, [role="button"], label)) {
-  min-inline-size: 0;
+/* ==========================================================================
+   Veksling mellom Del 1 (Bibliotek) og Del 2 (Dedikert Bokleser)
+   ========================================================================== */
+
+body[data-app-screen="library"] #reader-view {
+  display: none !important;
+}
+
+body[data-app-screen="reader"] #library-view {
+  display: none !important;
 }
 
 /* ==========================================================================
-   Oppdateringsvarsel (som i neo-dhlab) & Toppbanner
+   Oppdateringsvarsel (som i neo-dhlab)
    ========================================================================== */
 
 .update-banner {
-  max-inline-size: 96rem;
-  margin: 0.65rem auto 0;
-  padding: 0.65rem 1.125rem;
+  position: fixed;
+  top: max(0.5rem, env(safe-area-inset-top, 0px));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 200;
+  inline-size: min(94vw, 54rem);
+  padding: 0.65rem 1rem;
   background-color: var(--bg-panel);
   border: 2px solid var(--brand-color);
-  border-radius: 0.75rem;
+  border-radius: 0.85rem;
   display: flex;
   flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
   gap: 0.75rem;
-  box-shadow: 0 6px 20px rgba(29, 78, 216, 0.14);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.22);
 }
 
 .update-banner[hidden] {
@@ -204,6 +206,53 @@ canvas {
   gap: 0.45rem;
 }
 
+/* ==========================================================================
+   DEL 1: BIBLIOTEK & KILDEVELGER
+   ========================================================================== */
+
+.library-view {
+  max-inline-size: 76rem;
+  margin: 0 auto;
+  padding: max(0.75rem, env(safe-area-inset-top, 0px))
+    max(1rem, env(safe-area-inset-right, 0px))
+    max(2.5rem, env(safe-area-inset-bottom, 0px))
+    max(1rem, env(safe-area-inset-left, 0px));
+}
+
+.library-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.25rem;
+  background-color: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  border-radius: 0.85rem;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04);
+}
+
+.brand-group {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.brand-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 2.6rem;
+  block-size: 2.6rem;
+  border-radius: 0.65rem;
+  background-color: var(--brand-color);
+  color: var(--brand-contrast);
+  font-weight: 800;
+  font-size: 1.55rem;
+  flex-shrink: 0;
+}
+
 .title-with-version {
   display: flex;
   flex-wrap: wrap;
@@ -211,100 +260,512 @@ canvas {
   gap: 0.5rem;
 }
 
+.brand-group h1 {
+  font-size: clamp(1.2rem, 1rem + 0.7vw, 1.55rem);
+  font-weight: 780;
+  letter-spacing: -0.01em;
+}
+
 .version-pill {
   font-size: 0.74rem;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
-  padding: 0.1rem 0.48rem;
+  padding: 0.1rem 0.5rem;
   border-radius: 999px;
   background-color: var(--bg-subtle);
   color: var(--text-muted);
   border: 1px solid var(--border-color);
 }
 
-.app-header {
+.subtitle {
+  font-size: 0.88rem;
+  color: var(--text-muted);
+}
+
+.resume-btn {
+  padding: 0.55rem 1.1rem;
+  font-size: 0.92rem;
+  border-radius: 999px;
+  box-shadow: 0 4px 12px rgba(29, 78, 216, 0.22);
+}
+
+.library-main {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.library-quick-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
+  gap: 1rem;
+}
+
+.action-card {
+  background-color: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  border-radius: 0.85rem;
+  padding: 1.15rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0.85rem;
+}
+
+.action-card h2 {
+  font-size: 1.02rem;
+  font-weight: 700;
+}
+
+.action-card p {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-top: 0.25rem;
+}
+
+.library-section {
+  background-color: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  border-radius: 0.85rem;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.section-header-row {
   display: flex;
   flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
-  gap: 1rem;
-  max-inline-size: 96rem;
-  margin: 0.75rem auto;
-  padding: 0.875rem 1.125rem;
-  background-color: var(--bg-panel);
+  gap: 0.85rem;
+}
+
+.section-header-row h2 {
+  font-size: 1.08rem;
+  font-weight: 750;
+}
+
+.nb-search-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  flex: 1 1 20rem;
+  max-inline-size: 32rem;
+}
+
+.nb-search-form input[type="search"] {
+  flex: 1 1 14rem;
+  min-inline-size: 0;
+  font: inherit;
+  font-size: 0.9rem;
+  padding: 0.45rem 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-page);
+  color: var(--text-primary);
+}
+
+/* Bokhylle-kort */
+.book-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 13rem), 1fr));
+  gap: 0.9rem;
+}
+
+.book-grid[hidden] {
+  display: none;
+}
+
+.book-card {
+  font: inherit;
+  text-align: left;
+  background-color: var(--bg-page);
   border: 1px solid var(--border-color);
   border-radius: 0.75rem;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  padding: 0.65rem;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  color: var(--text-primary);
+  transition: transform 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease;
 }
 
-.brand-group {
+.book-card:hover,
+.book-card:focus-visible {
+  transform: translateY(-2px);
+  border-color: var(--brand-color);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.1);
+}
+
+.book-cover {
+  position: relative;
+  block-size: 9.5rem;
+  border-radius: 0.5rem;
+  background-color: var(--bg-subtle);
+  overflow: hidden;
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-}
-
-.brand-badge {
-  display: inline-flex;
-  align-items: center;
   justify-content: center;
-  inline-size: 2.5rem;
-  block-size: 2.5rem;
-  border-radius: 0.625rem;
-  background-color: var(--brand-color);
-  color: var(--brand-contrast);
-  font-weight: 800;
-  font-size: 1.5rem;
-  flex-shrink: 0;
+  border: 1px solid var(--border-color);
 }
 
-.brand-group h1 {
-  font-size: clamp(1.15rem, 1rem + 0.6vw, 1.5rem);
-  font-weight: 750;
-  letter-spacing: -0.01em;
+.book-cover img {
+  inline-size: 100%;
+  block-size: 100%;
+  object-fit: cover;
 }
 
-.subtitle {
-  font-size: 0.875rem;
+.synthetic-cover {
+  background: linear-gradient(135deg, #e9dec4, #d5c39c);
+  color: #292218;
+}
+
+.cover-glyph {
+  font-size: 2.75rem;
+}
+
+.book-tag {
+  position: absolute;
+  top: 0.4rem;
+  right: 0.4rem;
+  background-color: rgba(15, 23, 42, 0.78);
+  color: #ffffff;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 0.12rem 0.45rem;
+  border-radius: 999px;
+  backdrop-filter: blur(4px);
+}
+
+.book-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.book-card-body h3 {
+  font-size: 0.94rem;
+  font-weight: 720;
+  line-height: 1.25;
+}
+
+.book-author {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--brand-color);
+}
+
+.book-meta-note {
+  font-size: 0.74rem;
   color: var(--text-muted);
 }
 
-.control-pill {
+/* ==========================================================================
+   DEL 2: DEDIKERT BOKLESER (100% skjermflate + Tidsstyrte Piller ved trykk)
+   ========================================================================== */
+
+.reader-view {
+  position: relative;
+  min-block-size: 100dvh;
+  inline-size: 100%;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--bg-page);
+}
+
+.reader-stage {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  inline-size: 100%;
+  max-inline-size: 62rem;
+  margin: 0 auto;
+  min-block-size: 100dvh;
+}
+
+/* Selve boksiden fyller hele skjermen (100dvh minus 1.7rem mikro-statuslinje) */
+.liquid-reader {
+  --liquid-line-gap: 0.65rem;
+  --liquid-word-gap: 0.55rem;
+  --sampled-paper-bg: #f6efe0;
+  flex: 1;
+  inline-size: 100%;
+  min-block-size: calc(100dvh - 1.85rem);
+  max-block-size: calc(100dvh - 1.85rem);
+  overflow-y: auto;
+  padding: max(1.35rem, env(safe-area-inset-top, 0px) + 0.75rem)
+    clamp(1rem, 4vw, 3rem)
+    2.5rem;
   display: flex;
   flex-wrap: wrap;
+  align-items: baseline;
+  align-content: flex-start;
+  row-gap: var(--liquid-line-gap);
+  column-gap: var(--liquid-word-gap);
+  transition: background-color 0.2s ease;
+  touch-action: pan-y;
+}
+
+.liquid-reader.mode-paper {
+  background-color: var(--sampled-paper-bg, #f7f2e4);
+  color: #1c1915;
+}
+
+.liquid-reader.mode-clean {
+  background-color: var(--sampled-paper-bg, #f7f2e4);
+  color: #141923;
+}
+
+.liquid-reader.mode-dark {
+  background-color: #101318;
+  color: #f8fafc;
+}
+
+/* Mikro-statuslinje helt nederst på boksiden (som på Kindle Paperwhite) */
+.book-micro-statusbar {
+  block-size: 1.85rem;
+  padding: 0 clamp(0.85rem, 3vw, 2rem) env(safe-area-inset-bottom, 0px);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.73rem;
+  color: var(--text-muted);
+  background-color: var(--bg-page);
+  border-top: 1px solid rgba(128, 128, 128, 0.15);
+  user-select: none;
+}
+
+/* ==========================================================================
+   FLYTENDE PILLER (Transient HUD — vises ved trykk og fader ut etter ~4 sek)
+   ========================================================================== */
+
+.hud-top-pills,
+.hud-bottom-pills {
+  position: fixed;
+  left: 50%;
+  z-index: 90;
+  display: flex;
   align-items: center;
   gap: 0.5rem;
-  background-color: var(--bg-subtle);
-  padding: 0.25rem 0.625rem;
-  border-radius: 0.5rem;
-  border: 1px solid var(--border-color);
+  padding: 0.4rem 0.65rem;
+  border-radius: 999px;
+  background-color: rgba(20, 23, 30, 0.86);
+  color: #f8fafc;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.22s ease, transform 0.22s ease;
 }
 
-.control-pill label {
-  font-size: 0.85rem;
-  font-weight: 600;
+.hud-top-pills {
+  top: max(0.75rem, env(safe-area-inset-top, 0px) + 0.4rem);
+  transform: translate(-50%, -14px);
+  inline-size: min(95vw, 52rem);
+  justify-content: space-between;
 }
+
+.hud-bottom-pills {
+  bottom: max(2.25rem, env(safe-area-inset-bottom, 0px) + 1.8rem);
+  transform: translate(-50%, 14px);
+}
+
+/* Når brukeren trykker på skjermen, får reader-view klassen .hud-visible */
+.reader-view.hud-visible .hud-top-pills,
+.reader-view.hud-visible .hud-bottom-pills {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translate(-50%, 0);
+}
+
+.reader-view.no-book-pager .hud-bottom-pills {
+  display: none;
+}
+
+.hud-center-group,
+.hud-right-group {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.hud-book-title {
+  font-size: 0.8rem;
+  font-weight: 650;
+  max-inline-size: 18rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 40em) {
+  .hud-book-title {
+    display: none;
+  }
+}
+
+.hud-pill-btn {
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 680;
+  padding: 0.38rem 0.82rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background-color: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.14s ease, transform 0.1s ease;
+}
+
+.hud-pill-btn:hover,
+.hud-pill-btn:focus-visible {
+  background-color: rgba(255, 255, 255, 0.22);
+}
+
+.hud-pill-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.hud-aa-btn {
+  background-color: #2563eb;
+  border-color: transparent;
+}
+
+.hud-aa-btn:hover {
+  background-color: #1d4ed8;
+}
+
+.hud-page-select-wrap select {
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.3rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background-color: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  max-inline-size: 12rem;
+}
+
+.cache-status-pill {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background-color: rgba(255, 255, 255, 0.12);
+  color: #cbd5e1;
+  white-space: nowrap;
+}
+
+.cache-status-pill.is-ready {
+  background-color: rgba(22, 163, 74, 0.28);
+  color: #86efac;
+}
+
+/* ==========================================================================
+   FLYTTBAR POPOVER-SKUFF FOR "Aa Utseende" OG MODAL FOR "✂️ Utsnitt"
+   ========================================================================== */
+
+.aa-settings-sheet {
+  position: fixed;
+  top: max(4.1rem, env(safe-area-inset-top, 0px) + 3.6rem);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 110;
+  inline-size: min(94vw, 44rem);
+  max-block-size: 80dvh;
+  overflow-y: auto;
+  background-color: var(--bg-panel);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 1rem;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
+  display: flex;
+  flex-direction: column;
+}
+
+.aa-settings-sheet[hidden] {
+  display: none;
+}
+
+.sheet-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1.1rem;
+  border-bottom: 1px solid var(--border-color);
+  font-size: 0.95rem;
+}
+
+.aa-settings-sheet .theme-pills {
+  padding: 0.75rem 1.1rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+/* Modal / Overlay for Originalbilde & Utsnitt */
+.crop-inspector-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  background-color: rgba(15, 23, 42, 0.72);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: max(0.75rem, env(safe-area-inset-top, 0px)) 0.75rem;
+}
+
+.crop-inspector-sheet[hidden] {
+  display: none;
+}
+
+.crop-inspector-sheet .source-panel {
+  inline-size: min(96vw, 60rem);
+  max-block-size: 92dvh;
+  background-color: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  border-radius: 0.9rem;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
+}
+
+/* ==========================================================================
+   Felles kontroller, Knapper, Slidere og LAB-flis
+   ========================================================================== */
 
 select,
-input[type="url"] {
+input[type="url"],
+input[type="text"] {
   font: inherit;
   font-size: 0.9rem;
   color: var(--text-primary);
   background-color: var(--bg-panel);
   border: 1px solid var(--border-color);
-  border-radius: 0.375rem;
-  padding: 0.35rem 0.6rem;
+  border-radius: 0.45rem;
+  padding: 0.4rem 0.65rem;
 }
 
 .primary-btn,
 .secondary-btn,
 .file-upload-btn,
-.pill-btn,
-.tab-btn {
+.pill-btn {
   font: inherit;
   font-size: 0.875rem;
-  font-weight: 600;
+  font-weight: 650;
   border-radius: 0.5rem;
-  padding: 0.4rem 0.85rem;
+  padding: 0.42rem 0.85rem;
   cursor: pointer;
   border: 1px solid var(--border-color);
   background-color: var(--bg-subtle);
@@ -313,7 +774,8 @@ input[type="url"] {
 }
 
 .primary-btn,
-.file-upload-btn {
+.file-upload-btn,
+.pill-btn.active {
   background-color: var(--brand-color);
   color: var(--brand-contrast);
   border-color: transparent;
@@ -322,6 +784,7 @@ input[type="url"] {
 .file-upload-btn {
   gap: 0.4rem;
   position: relative;
+  align-self: flex-start;
 }
 
 .file-upload-btn input[type="file"] {
@@ -336,204 +799,35 @@ input[type="url"] {
   white-space: nowrap;
 }
 
-.file-upload-btn:focus-within {
-  outline: 2px solid var(--brand-color);
-  outline-offset: 2px;
-}
-
-.secondary-btn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-/* ==========================================================================
-   IIIF Skuff
-   ========================================================================== */
-
-.iiif-drawer {
-  max-inline-size: 96rem;
-  margin: 0 auto 0.75rem;
-  padding: 0.875rem 1.125rem;
-  background-color: var(--bg-panel);
-  border: 1px solid var(--border-color);
-  border-radius: 0.75rem;
-}
-
-.iiif-book-bar {
-  max-inline-size: 96rem;
-  margin: 0 auto 0.75rem;
-  padding: 0.65rem 1.125rem;
-  background-color: var(--bg-panel);
-  border: 1px solid var(--border-color);
-  border-radius: 0.75rem;
-  justify-content: space-between;
-}
-
-.iiif-book-bar[hidden] {
-  display: none;
-}
-
-.book-meta {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.55rem;
-  font-size: 0.92rem;
-}
-
-.iiif-pill {
-  background-color: var(--accent-warm);
-  color: #ffffff;
-  font-weight: 800;
-  font-size: 0.72rem;
-  letter-spacing: 0.04em;
-  padding: 0.15rem 0.45rem;
-  border-radius: 0.25rem;
-}
-
-.book-sub {
-  font-size: 0.82rem;
-  color: var(--text-muted);
-}
-
 .iiif-input-row {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
   gap: 0.5rem;
 }
 
-.iiif-input-row label {
-  font-weight: 600;
-  font-size: 0.9rem;
-}
-
-.iiif-input-row input[type="text"],
-.iiif-input-row input[type="url"] {
-  font: inherit;
-  font-size: 0.9rem;
-  color: var(--text-primary);
-  background-color: var(--bg-panel);
-  border: 1px solid var(--border-color);
-  border-radius: 0.375rem;
-  padding: 0.35rem 0.6rem;
-  flex: 1 1 20rem;
+.iiif-input-row input {
+  flex: 1 1 14rem;
   min-inline-size: 0;
-}
-
-.helper-text {
-  margin-top: 0.5rem;
-  font-size: 0.825rem;
-  color: var(--text-muted);
-}
-
-kbd {
-  padding: 0.1rem 0.35rem;
-  border-radius: 0.25rem;
-  border: 1px solid var(--border-color);
-  background-color: var(--bg-subtle);
-  font-size: 0.8rem;
-}
-
-/* ==========================================================================
-   Mobil-faner og Hoved-grid (Container Queries)
-   ========================================================================== */
-
-.mobile-view-tabs {
-  display: flex;
-  max-inline-size: 96rem;
-  margin: 0 auto 0.75rem;
-  gap: 0.4rem;
-}
-
-.tab-btn {
-  flex: 1;
-  text-align: center;
-}
-
-.tab-btn.active {
-  background-color: var(--brand-color);
-  color: var(--brand-contrast);
-  border-color: transparent;
-}
-
-.workspace-grid {
-  max-inline-size: 96rem;
-  margin: 0 auto;
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 1rem;
-  align-items: start;
-}
-
-@media (min-width: 62em) {
-  .workspace-grid[data-active-view="both"] {
-    grid-template-columns: minmax(22rem, 42%) 1fr;
-  }
-}
-
-/* Filtrering av paneler (både på mobil og desktop: i Kindle-modus er boksiden i sentrum!) */
-.workspace-grid[data-active-view="liquid"] {
-  max-inline-size: 62rem;
-}
-
-.workspace-grid[data-active-view="liquid"] .source-panel {
-  display: none;
-}
-
-.workspace-grid[data-active-view="source"] {
-  max-inline-size: 62rem;
-}
-
-.workspace-grid[data-active-view="source"] .liquid-panel {
-  display: none;
-}
-
-/* ==========================================================================
-   Paneler
-   ========================================================================== */
-
-.panel {
-  background-color: var(--bg-panel);
-  border: 1px solid var(--border-color);
-  border-radius: 0.75rem;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  container-type: inline-size;
 }
 
 .panel-header {
   display: flex;
   flex-wrap: wrap;
   justify-content: space-between;
-  align-items: flex-start;
+  align-items: center;
   gap: 0.75rem;
-  padding: 0.875rem 1.125rem;
+  padding: 0.85rem 1.1rem;
   border-bottom: 1px solid var(--border-color);
 }
 
 .panel-header h2 {
-  font-size: 1.05rem;
-  font-weight: 700;
+  font-size: 1rem;
 }
 
 .panel-hint {
-  font-size: 0.825rem;
+  font-size: 0.82rem;
   color: var(--text-muted);
 }
-
-.checkbox-label {
-  gap: 0.4rem;
-  font-size: 0.875rem;
-  font-weight: 500;
-  cursor: pointer;
-  user-select: none;
-}
-
-/* ==========================================================================
-   Kilde-canvas & Utsnittsvelger
-   ========================================================================== */
 
 .canvas-stage {
   padding: 0.75rem;
@@ -541,15 +835,15 @@ kbd {
   display: flex;
   justify-content: center;
   align-items: flex-start;
-  max-block-size: 72vh;
   overflow: auto;
+  flex: 1;
 }
 
 .canvas-wrapper {
   position: relative;
   display: inline-block;
   line-height: 0;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.14);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
   border: 1px solid var(--border-color);
   cursor: crosshair;
   touch-action: none;
@@ -570,17 +864,16 @@ kbd {
 }
 
 .panel-footer {
-  padding: 0.65rem 1.125rem;
+  padding: 0.6rem 1.1rem;
   border-top: 1px solid var(--border-color);
-  background-color: var(--bg-panel);
-  font-size: 0.825rem;
+  font-size: 0.8rem;
   color: var(--text-muted);
 }
 
 .stats-bar {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.75rem;
+  gap: 0.6rem;
   align-items: center;
 }
 
@@ -595,27 +888,11 @@ kbd {
   font-weight: 600;
 }
 
-/* ==========================================================================
-   Liquid Mode Kontroller & Leseflate
-   ========================================================================== */
-
-.theme-pills {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-}
-
-.pill-btn.active {
-  background-color: var(--brand-color);
-  color: var(--brand-contrast);
-  border-color: transparent;
-}
-
 .controls-bar {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 11.5rem), 1fr));
-  gap: 0.85rem 1.25rem;
-  padding: 0.85rem 1.125rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr));
+  gap: 0.8rem 1.1rem;
+  padding: 0.85rem 1.1rem;
   background-color: var(--bg-subtle);
   border-bottom: 1px solid var(--border-color);
 }
@@ -623,14 +900,14 @@ kbd {
 .slider-group {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 0.22rem;
 }
 
 .slider-label-row {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  font-size: 0.825rem;
+  font-size: 0.8rem;
   font-weight: 600;
 }
 
@@ -646,12 +923,8 @@ kbd {
   cursor: pointer;
 }
 
-/* ==========================================================================
-   Sammenleggbar LAB-flis (<details>) for Tracing / Kantglatting + Ord-lupe
-   ========================================================================== */
-
+/* LAB-detaljer */
 .trace-lab-details {
-  border-bottom: 1px solid var(--border-color);
   background-color: var(--bg-panel);
 }
 
@@ -661,26 +934,18 @@ kbd {
   flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
-  gap: 0.5rem 1rem;
-  padding: 0.55rem 1.125rem;
+  gap: 0.5rem;
+  padding: 0.6rem 1.1rem;
   cursor: pointer;
   user-select: none;
-  background-color: var(--bg-panel);
-  transition: background-color 0.12s ease;
 }
 
 .trace-lab-summary::-webkit-details-marker {
   display: none;
 }
 
-.trace-lab-summary:hover {
-  background-color: var(--bg-subtle);
-}
-
 .disclosure-chevron {
   display: inline-block;
-  font-size: 0.95rem;
-  color: var(--text-muted);
   transition: transform 0.18s ease;
 }
 
@@ -688,86 +953,62 @@ kbd {
   transform: rotate(90deg);
 }
 
+.trace-title-group,
 .summary-meta-pills {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.4rem;
-}
-
-.summary-chip {
-  font-size: 0.76rem;
-  font-weight: 600;
-  padding: 0.12rem 0.55rem;
-  border-radius: 999px;
-  background-color: var(--bg-subtle);
-  color: var(--text-muted);
-  border: 1px solid var(--border-color);
-}
-
-.trace-debug-bar {
-  padding: 0.75rem 1.125rem 0.9rem;
-  background-color: var(--bg-panel);
-  border-top: 1px dashed var(--border-color);
-  display: flex;
-  flex-direction: column;
-  gap: 0.65rem;
-}
-
-.trace-debug-top {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  align-items: center;
-  gap: 0.65rem;
-}
-
-.trace-title-group {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.45rem;
-  font-size: 0.85rem;
+  font-size: 0.82rem;
 }
 
 .debug-badge {
   background-color: var(--accent-warm);
   color: #ffffff;
   font-weight: 800;
-  font-size: 0.7rem;
-  letter-spacing: 0.04em;
-  padding: 0.12rem 0.42rem;
+  font-size: 0.68rem;
+  padding: 0.1rem 0.4rem;
   border-radius: 0.25rem;
 }
 
+.summary-chip,
 .perf-pill {
-  font-variant-numeric: tabular-nums;
-  font-size: 0.78rem;
-  font-weight: 700;
-  padding: 0.12rem 0.5rem;
+  font-size: 0.74rem;
+  font-weight: 650;
+  padding: 0.1rem 0.5rem;
   border-radius: 999px;
   background-color: var(--bg-subtle);
-  color: var(--brand-color);
   border: 1px solid var(--border-color);
 }
 
-.trace-mode-buttons {
+.trace-debug-bar {
+  padding: 0.75rem 1.1rem;
+  border-top: 1px dashed var(--border-color);
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
+  flex-direction: column;
+  gap: 0.65rem;
 }
 
-.debug-btn {
+.trace-mode-buttons,
+.trace-debug-Controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.9rem;
+  font-size: 0.78rem;
+}
+
+.debug-btn,
+.mini-btn {
   font: inherit;
-  font-size: 0.8rem;
-  font-weight: 600;
-  padding: 0.32rem 0.68rem;
-  border-radius: 0.42rem;
+  font-size: 0.76rem;
+  font-weight: 650;
+  padding: 0.28rem 0.6rem;
+  border-radius: 0.4rem;
   border: 1px solid var(--border-color);
   background-color: var(--bg-subtle);
   color: var(--text-primary);
   cursor: pointer;
-  transition: background-color 0.12s ease, border-color 0.12s ease;
 }
 
 .debug-btn.active {
@@ -776,44 +1017,22 @@ kbd {
   border-color: transparent;
 }
 
-.trace-debug-Controls {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.75rem 1.25rem;
-  padding-top: 0.25rem;
-  font-size: 0.8rem;
-}
-
 .mini-control {
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
-}
-
-.mini-control label {
-  font-weight: 600;
-  color: var(--text-muted);
+  gap: 0.35rem;
 }
 
 .mini-control input[type="range"] {
-  inline-size: 5.5rem;
-}
-
-.mini-control output {
-  font-variant-numeric: tabular-nums;
-  font-weight: 700;
-  color: var(--brand-color);
-  min-inline-size: 3rem;
+  inline-size: 5rem;
 }
 
 .word-loupe-panel {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr));
-  gap: 0.65rem;
-  padding: 0.65rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 9.5rem), 1fr));
+  gap: 0.5rem;
+  padding: 0.5rem;
   background-color: var(--bg-subtle);
-  border: 1px dashed var(--border-color);
   border-radius: 0.5rem;
 }
 
@@ -825,62 +1044,18 @@ kbd {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.35rem;
+  gap: 0.25rem;
   background-color: var(--bg-panel);
-  padding: 0.5rem;
-  border-radius: 0.375rem;
+  padding: 0.4rem;
+  border-radius: 0.35rem;
   border: 1px solid var(--border-color);
 }
 
 .loupe-label {
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   font-weight: 700;
   color: var(--text-muted);
 }
-
-.loupe-card canvas {
-  max-inline-size: 100%;
-  block-size: auto;
-  border-radius: 0.25rem;
-}
-
-/* Selve Liquid-leseflaten der ordene flyter som inline-flex elementer */
-.liquid-reader {
-  --liquid-line-gap: 0.65rem;
-  --liquid-word-gap: 0.55rem;
-  --sampled-paper-bg: #f6efe0;
-  padding: clamp(1rem, 2.5cqi, 2rem);
-  min-block-size: 26rem;
-  max-block-size: 74vh;
-  overflow-y: auto;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  align-content: flex-start;
-  row-gap: var(--liquid-line-gap);
-  column-gap: var(--liquid-word-gap);
-  transition: background-color 0.2s ease, max-block-size 0.2s ease;
-  touch-action: pan-y;
-}
-
-.liquid-reader.mode-paper {
-  background-color: var(--sampled-paper-bg, #f7f2e4);
-  color: #1c1915;
-}
-
-.liquid-reader.mode-clean {
-  background-color: var(--sampled-paper-bg, #f7f2e4);
-  color: #141923;
-}
-
-.liquid-reader.mode-dark {
-  background-color: #101318;
-  color: #f8fafc;
-}
-
-/* ==========================================================================
-   Deskew-pille og Lesemodus (trykk i leseflaten for å skjule/vise menyer)
-   ========================================================================== */
 
 .deskew-pill {
   display: inline-flex;
@@ -890,140 +1065,19 @@ kbd {
   border-radius: 0.5rem;
   background-color: var(--bg-subtle);
   border: 1px solid var(--border-color);
-  font-size: 0.8rem;
-}
-
-.deskew-pill label {
-  font-weight: 600;
+  font-size: 0.78rem;
 }
 
 .deskew-pill input[type="range"] {
   inline-size: 4.5rem;
 }
 
-.deskew-pill output {
-  font-variant-numeric: tabular-nums;
-  font-weight: 700;
-  color: var(--brand-color);
-  min-inline-size: 2.3rem;
-}
-
-.mini-btn {
-  font: inherit;
-  font-size: 0.76rem;
-  font-weight: 700;
-  padding: 0.2rem 0.5rem;
-  border-radius: 0.35rem;
-  border: 1px solid var(--border-color);
-  background-color: var(--bg-panel);
-  color: var(--text-primary);
-  cursor: pointer;
-}
-
-.mini-btn:hover {
-  background-color: var(--brand-color);
-  color: var(--brand-contrast);
-  border-color: transparent;
-}
-
-.zen-floating-bar {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.45rem 1.125rem;
-  background-color: var(--bg-panel);
-  border-bottom: 1px solid var(--border-color);
-  font-size: 0.82rem;
-}
-
-.zen-floating-bar[hidden] {
-  display: none;
-}
-
-.zen-bar-left,
-.zen-bar-right {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.45rem;
-}
-
-.zen-page-indicator {
-  font-weight: 700;
-  color: var(--text-primary);
-}
-
-.cache-status-pill {
-  font-size: 0.72rem;
-  font-weight: 600;
-  padding: 0.1rem 0.48rem;
-  border-radius: 999px;
-  background-color: var(--bg-subtle);
-  color: var(--text-muted);
-  border: 1px solid var(--border-color);
-  transition: color 0.15s ease, border-color 0.15s ease;
-}
-
-.cache-status-pill.is-ready {
-  color: #15803d;
-  border-color: rgba(21, 128, 61, 0.35);
-}
-
-.aa-pill-btn {
-  background-color: var(--brand-color);
-  color: var(--brand-contrast);
-  border-color: transparent;
-  padding: 0.25rem 0.65rem;
-}
-
-.kindle-book-footer {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.footer-left {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.45rem;
-}
-
-.footer-right {
-  font-variant-numeric: tabular-nums;
-  font-weight: 700;
-  color: var(--text-primary);
-}
-
-/* Når brukeren er i Kindle-lesemodus (menus-collapsed), skjules alle oppsettspaneler
-   slik at selve boksiden står helt i sentrum! */
-body.menus-collapsed .app-header,
-body.menus-collapsed .iiif-book-bar,
-body.menus-collapsed .mobile-view-tabs,
-body.menus-collapsed .reader-collapsible-ui {
-  display: none !important;
-}
-
-body.menus-collapsed .workspace-grid {
-  margin-top: 0.5rem;
-}
-
-body.menus-collapsed .liquid-reader {
-  max-block-size: 86vh;
-  padding: clamp(1.25rem, 4cqi, 2.75rem);
-}
-
-/* Avsnittsskille når originalen har ekstra stor linjeavstand */
+/* Ord-tokens i Liquid-leseren */
 .liquid-paragraph-break {
   flex-basis: 100%;
   block-size: 0.75rem;
 }
 
-/* Hvert enkelt utklipt ord-bilde */
 .word-token {
   display: inline-flex;
   align-items: center;
@@ -1031,7 +1085,6 @@ body.menus-collapsed .liquid-reader {
   border-radius: 0.25rem;
   padding: 1px;
   cursor: pointer;
-  transition: outline-color 0.12s ease, transform 0.1s ease;
   outline: 2px solid transparent;
 }
 
@@ -1045,7 +1098,6 @@ body.menus-collapsed .liquid-reader {
 .word-token canvas {
   display: block;
   border-radius: 2px;
-  image-rendering: auto;
 }
 
 .empty-state-msg {
@@ -1053,45 +1105,4 @@ body.menus-collapsed .liquid-reader {
   text-align: center;
   color: var(--text-muted);
   inline-size: 100%;
-}
-
-.reader-footer {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.tip-badge {
-  background-color: var(--brand-color);
-  color: var(--brand-contrast);
-  font-weight: 700;
-  font-size: 0.75rem;
-  padding: 0.1rem 0.45rem;
-  border-radius: 0.25rem;
-}
-
-/* Fallback for eldre nettlesere uten accent-color (fra modern-web-guidance) */
-@supports not (accent-color: auto) {
-  input[type="range"] {
-    -webkit-appearance: none;
-    appearance: none;
-    background: transparent;
-  }
-  input[type="range"]::-webkit-slider-runnable-track {
-    width: 100%;
-    height: 8px;
-    background: #ccc;
-    border-radius: 4px;
-  }
-  input[type="range"]::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    appearance: none;
-    height: 16px;
-    width: 16px;
-    border-radius: 50%;
-    background: var(--brand-color, #1d4ed8);
-    cursor: pointer;
-    margin-top: -4px;
-  }
 }

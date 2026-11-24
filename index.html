@@ -5,11 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="color-scheme" content="light dark" />
   <meta name="text-scale" content="scale" />
-  <title>Pixel-Liquid Mode — Universell leseflyt uten OCR</title>
-  <link rel="stylesheet" href="styles.css?v=8" />
+  <title>Pixel-Liquid Mode — Bibliotek &amp; Leseflate uten OCR</title>
+  <link rel="stylesheet" href="styles.css?v=9" />
 </head>
-<body class="menus-collapsed">
-  <!-- OPPDATERINGSVARSEL (som i neo-dhlab: varsler når ny versjon er rullet ut på GitHub Pages) -->
+<body data-app-screen="library">
+  <!-- OPPDATERINGSVARSEL (varsler når ny versjon er rullet ut på GitHub Pages) -->
   <div id="update-banner" class="update-banner" role="status" aria-live="polite" hidden>
     <div class="update-banner-text">
       <span class="update-dot" aria-hidden="true"></span>
@@ -22,151 +22,253 @@
     </div>
   </div>
 
-  <header class="app-header">
-    <div class="brand-group">
-      <div class="brand-badge" aria-hidden="true">≈</div>
-      <div>
-        <div class="title-with-version">
-          <h1>Pixel-Liquid Mode</h1>
-          <span id="app-version-badge" class="version-pill" title="Installert versjon">v1.3.0</span>
+  <!-- ========================================================================
+       DEL 1: BIBLIOTEK & KILDEVELGER (Velg bok, søk i NB.no, last opp bilde)
+       ======================================================================== -->
+  <div id="library-view" class="library-view">
+    <header class="library-header">
+      <div class="brand-group">
+        <div class="brand-badge" aria-hidden="true">≈</div>
+        <div>
+          <div class="title-with-version">
+            <h1>Pixel-Liquid Mode</h1>
+            <span id="app-version-badge" class="version-pill" title="Installert versjon">v1.4.0</span>
+          </div>
+          <p class="subtitle">Universell leseflyt på pikselnivå — helt uten OCR</p>
         </div>
-        <p class="subtitle">Reflow av skannet tekst og IIIF-bøker på piksel-nivå — helt uten OCR</p>
-      </div>
-    </div>
-
-    <div class="source-toolbar toolbar" role="region" aria-label="Bildevelger og kilder">
-      <div class="control-pill">
-        <label for="preset-select">Kilde:</label>
-        <select id="preset-select">
-          <option value="nb-hamsun-sult">Knut Hamsun: Sult (1890) — NB.no IIIF (Åpningsside)</option>
-          <option value="synthetic-gothic">1890 Fraktur / Avissats (Innebygd demo)</option>
-          <option value="synthetic-mobile">Småskrift-skjermbilde / Brev (Innebygd demo)</option>
-          <option value="synthetic-twocol">To-spalters artikkel — test spaltemarkering (Innebygd demo)</option>
-        </select>
       </div>
 
-      <label class="file-upload-btn" for="file-input">
-        <span aria-hidden="true">📷</span>
-        <span>Last opp / Ta bilde</span>
-        <input type="file" id="file-input" accept="image/*" />
-      </label>
-
-      <button type="button" id="toggle-iiif-btn" class="secondary-btn" aria-expanded="false" aria-controls="iiif-drawer">
-        IIIF / NB.no URN
+      <button type="button" id="resume-reading-btn" class="primary-btn resume-btn">
+        📖 Fortsett å lese: <span id="resume-book-title">Sult (1890)</span> →
       </button>
-    </div>
-  </header>
+    </header>
 
-  <section id="iiif-drawer" class="iiif-drawer" hidden>
-    <form id="iiif-form" class="iiif-form">
-      <div class="iiif-input-row">
-        <label for="iiif-url-input">NB.no-lenke, URN eller IIIF-URL:</label>
-        <input
-          type="text"
-          id="iiif-url-input"
-          value="https://urn.nb.no/URN:NBN:no-nb_digibok_2015051929001"
-          placeholder="https://urn.nb.no/URN:NBN:no-nb_digibok_2015051929001 eller IIIF-manifest"
-          required
-        />
-        <button type="submit" class="primary-btn">Hent fra NB / IIIF</button>
+    <main class="library-main">
+      <!-- HURTIGKORT: KAMERA / SKJERMBILDE OG IIIF-LENKE -->
+      <section class="library-quick-actions" aria-label="Egne bilder og IIIF-lenker">
+        <div class="action-card upload-card">
+          <div class="action-card-info">
+            <h2>📷 Les eget bilde eller skjermbilde</h2>
+            <p>Ta bilde av en bokside/avis på mobilen, velg fra kamerarull, eller lim inn med <kbd>Ctrl+V</kbd> / <kbd>⌘V</kbd>.</p>
+          </div>
+          <label class="file-upload-btn" for="file-input">
+            <span aria-hidden="true">📁</span>
+            <span>Velg bilde / Kamera</span>
+            <input type="file" id="file-input" accept="image/*" />
+          </label>
+        </div>
+
+        <div class="action-card urn-card">
+          <h2>🔗 Åpne via NB.no-lenke, URN eller IIIF-manifest</h2>
+          <form id="iiif-form" class="iiif-form">
+            <div class="iiif-input-row">
+              <input
+                type="text"
+                id="iiif-url-input"
+                value="https://urn.nb.no/URN:NBN:no-nb_digibok_2015051929001"
+                placeholder="https://urn.nb.no/URN:NBN:no-nb_... eller IIIF-URL"
+                aria-label="NB.no-lenke, URN eller IIIF-URL"
+                required
+              />
+              <button type="submit" class="primary-btn">Åpne i leser</button>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <!-- SØK DIREKTE I NASJONALBIBLIOTEKETS ÅPNE IIIF-BØKER -->
+      <section class="library-section" aria-labelledby="nb-search-heading">
+        <div class="section-header-row">
+          <div>
+            <h2 id="nb-search-heading">🔎 Søk i Nasjonalbiblioteket (Fritt tilgjengelige bøker)</h2>
+            <p class="panel-hint">Søker direkte i NB.no etter Public Domain-bøker som kan strømmes via IIIF.</p>
+          </div>
+          <form id="nb-search-form" class="nb-search-form">
+            <input
+              type="search"
+              id="nb-search-input"
+              placeholder="Søk på forfatter eller tittel (f.eks. Hamsun, Ibsen, eventyr)..."
+              aria-label="Søk i Nasjonalbiblioteket"
+            />
+            <button type="submit" class="primary-btn">Søk</button>
+          </form>
+        </div>
+
+        <div id="nb-search-results" class="book-grid" hidden aria-live="polite"></div>
+      </section>
+
+      <!-- KURATERT BOKHYLLE -->
+      <section class="library-section" aria-labelledby="shelf-heading">
+        <div class="section-header-row">
+          <div>
+            <h2 id="shelf-heading">📚 Utvalgte bøker &amp; testsider</h2>
+            <p class="panel-hint">Trykk på en bok for å åpne den i fullskjerms Liquid-leser.</p>
+          </div>
+        </div>
+
+        <div class="book-grid" id="curated-book-grid">
+          <button type="button" class="book-card" data-urn="URN:NBN:no-nb_digibok_2015051929001" data-page="8">
+            <div class="book-cover">
+              <img src="https://www.nb.no/services/image/resolver/URN:NBN:no-nb_digibok_2015051929001_0005/full/0,220/0/native.jpg" alt="" loading="lazy" />
+              <span class="book-tag">IIIF • 1890</span>
+            </div>
+            <div class="book-card-body">
+              <h3>Sult</h3>
+              <p class="book-author">Knut Hamsun</p>
+              <span class="book-meta-note">Førsteutgave, København 1890 (353 s.)</span>
+            </div>
+          </button>
+
+          <button type="button" class="book-card" data-urn="URN:NBN:no-nb_digibok_2013082608001" data-page="8">
+            <div class="book-cover">
+              <img src="https://www.nb.no/services/image/resolver/URN:NBN:no-nb_digibok_2013082608001_0005/full/0,220/0/native.jpg" alt="" loading="lazy" />
+              <span class="book-tag">IIIF • 1885</span>
+            </div>
+            <div class="book-card-body">
+              <h3>Constance Ring</h3>
+              <p class="book-author">Amalie Skram</p>
+              <span class="book-meta-note">Roman, Kristiania 1885 (519 s.)</span>
+            </div>
+          </button>
+
+          <button type="button" class="book-card" data-urn="URN:NBN:no-nb_digibok_2009042312002" data-page="8">
+            <div class="book-cover">
+              <img src="https://www.nb.no/services/image/resolver/URN:NBN:no-nb_digibok_2009042312002_0005/full/0,220/0/native.jpg" alt="" loading="lazy" />
+              <span class="book-tag">IIIF • 1899</span>
+            </div>
+            <div class="book-card-body">
+              <h3>Sommer : smaa fortællinger</h3>
+              <p class="book-author">Amalie Skram</p>
+              <span class="book-meta-note">København 1899 (165 s.)</span>
+            </div>
+          </button>
+
+          <button type="button" class="book-card" data-urn="URN:NBN:no-nb_digibok_2006082300044" data-page="12">
+            <div class="book-cover">
+              <img src="https://www.nb.no/services/image/resolver/URN:NBN:no-nb_digibok_2006082300044_0005/full/0,220/0/native.jpg" alt="" loading="lazy" />
+              <span class="book-tag">IIIF • 1892</span>
+            </div>
+            <div class="book-card-body">
+              <h3>Henrik Ibsen og hans Værker</h3>
+              <p class="book-author">Henrik Jæger</p>
+              <span class="book-meta-note">København 1892 (473 s.)</span>
+            </div>
+          </button>
+
+          <button type="button" class="book-card" data-urn="URN:NBN:no-nb_digibok_2017112348049" data-page="10">
+            <div class="book-cover">
+              <img src="https://www.nb.no/services/image/resolver/URN:NBN:no-nb_digibok_2017112348049_0003/full/0,220/0/native.jpg" alt="" loading="lazy" />
+              <span class="book-tag">Fraktur • 1869</span>
+            </div>
+            <div class="book-card-body">
+              <h3>Norsk Landmandsbog</h3>
+              <p class="book-author">P. Chr. Asbjørnsen</p>
+              <span class="book-meta-note">Gotisk fraktursats, 1869 (213 s.)</span>
+            </div>
+          </button>
+
+          <button type="button" class="book-card" data-synthetic="synthetic-gothic">
+            <div class="book-cover synthetic-cover">
+              <span class="cover-glyph">𝔉</span>
+              <span class="book-tag">Offline Demo</span>
+            </div>
+            <div class="book-card-body">
+              <h3>Christiania Intelligentssedler</h3>
+              <p class="book-author">1890 Avissats (Innebygd)</p>
+              <span class="book-meta-note">Testside med papirtekstur</span>
+            </div>
+          </button>
+
+          <button type="button" class="book-card" data-synthetic="synthetic-mobile">
+            <div class="book-cover synthetic-cover">
+              <span class="cover-glyph">📱</span>
+              <span class="book-tag">Offline Demo</span>
+            </div>
+            <div class="book-card-body">
+              <h3>Småskrift-skjermbilde / Brev</h3>
+              <p class="book-author">Mobil-eksempel (Innebygd)</p>
+              <span class="book-meta-note">Test av tett dokument på liten flate</span>
+            </div>
+          </button>
+
+          <button type="button" class="book-card" data-synthetic="synthetic-twocol">
+            <div class="book-cover synthetic-cover">
+              <span class="cover-glyph">📰</span>
+              <span class="book-tag">Spalte-demo</span>
+            </div>
+            <div class="book-card-body">
+              <h3>Norsk Folkeblad (To spalter)</h3>
+              <p class="book-author">Spaltemarkering (Innebygd)</p>
+              <span class="book-meta-note">Test av utsnittsboks på to spalter</span>
+            </div>
+          </button>
+        </div>
+
+        <!-- Skjult select for bakoverkompatibilitet -->
+        <select id="preset-select" hidden>
+          <option value="nb-hamsun-sult">Sult</option>
+          <option value="synthetic-gothic">Fraktur</option>
+          <option value="synthetic-mobile">Mobil</option>
+          <option value="synthetic-twocol">Tospalter</option>
+        </select>
+      </section>
+    </main>
+  </div>
+
+  <!-- ========================================================================
+       DEL 2: DEDIKERT BOKLESER (100% skjermflate + tidsstyrte piller ved trykk)
+       ======================================================================== -->
+  <div id="reader-view" class="reader-view">
+    <!-- FLYTENDE TOPP-PILLER (vises i 4 sekunder når brukeren trykker på siden) -->
+    <div id="hud-top-pills" class="hud-top-pills" role="toolbar" aria-label="Hurtigvalg for bokleser">
+      <button type="button" id="back-to-library-btn" class="hud-pill-btn">
+        ← Bibliotek
+      </button>
+
+      <div class="hud-center-group">
+        <span id="zen-page-indicator" class="hud-book-title">Sult (1890)</span>
+        <span id="cache-status-pill" class="cache-status-pill" title="Neste side forhåndslastes i minnet">⚡ Klar</span>
       </div>
-      <p class="helper-text">
-        Lim inn en <code>https://urn.nb.no/URN:NBN:no-nb_...</code>-lenke, en bar <code>URN:NBN:...</code>, en <code>nb.no/items/...</code>-lenke eller en direkte IIIF-manifest/bilde-URL. For fritt tilgjengelige bøker henter vi hele sidemanifestet slik at du kan bla fra side til side!
-      </p>
-    </form>
-  </section>
 
-  <!-- IIIF BOK-NAVIGATOR (vises automatisk når en bok fra NB.no / IIIF-manifest er lastet) -->
-  <section id="iiif-book-bar" class="iiif-book-bar toolbar" hidden aria-label="IIIF Boknavigering">
-    <div class="book-meta">
-      <span class="iiif-pill">IIIF</span>
-      <strong id="book-title-label">Sult — Knut Hamsun (1890)</strong>
-      <span id="book-access-label" class="book-sub">Public Domain (Nasjonalbiblioteket)</span>
+      <div class="hud-right-group">
+        <button type="button" id="open-crop-modal-btn" class="hud-pill-btn" aria-pressed="false" title="Juster utsnitt eller rett opp skjev skanning">
+          ✂️ Utsnitt
+        </button>
+        <button type="button" id="open-aa-sheet-btn" class="hud-pill-btn hud-aa-btn" aria-expanded="false" title="Juster tekststørrelse, blekkfylde, fargetema og tracing">
+          Aa Utseende
+        </button>
+      </div>
     </div>
 
-    <div class="book-pager toolbar">
-      <button type="button" id="prev-page-btn" class="secondary-btn">← Forrige side</button>
-      <div class="control-pill">
-        <label for="page-select">Side:</label>
+    <!-- FLYTENDE BUNN-PILLE (Sideblading i bok, vises sammen med topp-pillene) -->
+    <div id="hud-bottom-pills" class="hud-bottom-pills" role="toolbar" aria-label="Sideblading">
+      <button type="button" id="prev-page-btn" class="hud-pill-btn">← Forrige</button>
+      <div class="hud-page-select-wrap">
         <select id="page-select" aria-label="Velg side i boken"></select>
       </div>
-      <button type="button" id="next-page-btn" class="secondary-btn">Neste side →</button>
+      <button type="button" id="next-page-btn" class="hud-pill-btn">Neste →</button>
     </div>
-  </section>
 
-  <nav class="mobile-view-tabs" aria-label="Visningsmodus">
-    <button type="button" class="tab-btn active" data-view-target="liquid">📖 Kun Boksiden (Kindle-modus)</button>
-    <button type="button" class="tab-btn" data-view-target="both">⧉ Side-ved-side (Original + Liquid)</button>
-    <button type="button" class="tab-btn" data-view-target="source">✂️ Kun Original &amp; Utsnitt</button>
-  </nav>
-
-  <main class="workspace-grid" id="workspace-grid" data-active-view="liquid">
-    <!-- VENSTRE PANEL: KILDEBILDE OG SEGMENTERINGSBOKSER -->
-    <section class="panel source-panel" aria-labelledby="source-heading">
-      <div class="panel-header">
-        <div>
-          <h2 id="source-heading">1. Originalbilde &amp; utsnitt</h2>
-          <p class="panel-hint">Dra i de blå kantene/hjørnene for å justere utsnittet, eller dra en ny boks.</p>
-        </div>
-        <div class="panel-actions toolbar">
-          <div class="deskew-pill" title="Rett opp skjeve skanninger (roter ±7 grader)">
-            <label for="deskew-slider">Rett opp:</label>
-            <input type="range" id="deskew-slider" min="-7" max="7" step="0.25" value="0" />
-            <output id="deskew-output" for="deskew-slider">0.0°</output>
-            <button type="button" id="auto-deskew-btn" class="mini-btn" title="Finn beste linjevinkel automatisk">
-              Auto
-            </button>
-          </div>
-          <label class="checkbox-label" for="show-boxes-toggle">
-            <input type="checkbox" id="show-boxes-toggle" checked />
-            <span>Vis ord</span>
-          </label>
-          <button type="button" id="reset-crop-btn" class="secondary-btn" disabled>
-            Hele siden
-          </button>
-        </div>
+    <!-- SKUFF / POPOVER FOR "Aa Utseende" (Skriftstørrelse, Blekkfylde, Tema og LAB) -->
+    <aside id="aa-settings-sheet" class="aa-settings-sheet" hidden aria-label="Utseende og skriftinnstillinger">
+      <div class="sheet-header">
+        <strong>Aa Skrift, Tema &amp; Tracing</strong>
+        <button type="button" id="close-aa-sheet-btn" class="mini-btn">Ferdig ✓</button>
       </div>
 
-      <div class="canvas-stage" id="canvas-stage">
-        <div class="canvas-wrapper" id="canvas-wrapper">
-          <canvas id="source-canvas" aria-label="Kildebilde med detekterte tekstlinjer og ord"></canvas>
-          <canvas id="overlay-canvas" aria-hidden="true"></canvas>
-        </div>
+      <div class="theme-pills" role="group" aria-label="Fargetema">
+        <button type="button" class="pill-btn active" data-render-mode="clean" aria-pressed="true">
+          Renset blekk (Papir)
+        </button>
+        <button type="button" class="pill-btn" data-render-mode="paper" aria-pressed="false">
+          Originalt utklipp
+        </button>
+        <button type="button" class="pill-btn" data-render-mode="dark" aria-pressed="false">
+          Nattmodus
+        </button>
       </div>
 
-      <footer class="panel-footer">
-        <div class="stats-bar" id="stats-bar" aria-live="polite">
-          Laster bilde...
-        </div>
-      </footer>
-    </section>
-
-    <!-- HØYRE PANEL: LIQUID MODE LESER -->
-    <section class="panel liquid-panel" id="liquid-panel" aria-labelledby="liquid-heading">
-      <div class="panel-header reader-collapsible-ui">
-        <div>
-          <h2 id="liquid-heading">2. Liquid Mode (Leseflate)</h2>
-          <p class="panel-hint">Trykk i leseflaten for å skjule/vise menyer • Sveip venstre/høyre for å bla</p>
-        </div>
-
-        <div class="theme-pills" role="group" aria-label="Visningsfilter for ord-piksler">
-          <button type="button" class="pill-btn active" data-render-mode="clean" aria-pressed="true">
-            Renset blekk (Papirtone)
-          </button>
-          <button type="button" class="pill-btn" data-render-mode="paper" aria-pressed="false">
-            Originalt utklipp
-          </button>
-          <button type="button" class="pill-btn" data-render-mode="dark" aria-pressed="false">
-            Nattmodus
-          </button>
-          <button type="button" id="zen-toggle-btn" class="pill-btn zen-btn" aria-pressed="false" title="Skjul/vis menyer (eller trykk i tomrom i leseflaten)">
-            ⛶ Lesemodus
-          </button>
-        </div>
-      </div>
-
-      <!-- KONTROLLER FOR FORSTØRRING OG SEGMENTERING -->
-      <div class="controls-bar reader-collapsible-ui" role="region" aria-label="Lesekontroller og ordskille-finjustering">
+      <div class="controls-bar" role="region" aria-label="Lesekontroller">
         <div class="slider-group">
           <div class="slider-label-row">
             <label for="scale-slider">Tekststørrelse (Skala)</label>
@@ -177,18 +279,10 @@
 
         <div class="slider-group">
           <div class="slider-label-row">
-            <label for="stroke-weight-slider" title="Forsterker og gjør bokstavstreken fyldigere i Renset blekk / Nattmodus">Teksttykkelse (Blekkfylde)</label>
+            <label for="stroke-weight-slider">Teksttykkelse (Blekkfylde)</label>
             <output id="stroke-weight-output" for="stroke-weight-slider">+9</output>
           </div>
           <input type="range" id="stroke-weight-slider" min="-15" max="18" step="3" value="9" />
-        </div>
-
-        <div class="slider-group">
-          <div class="slider-label-row">
-            <label for="space-slider" title="Hvor bredt et hvitt mellomrom må være for å splitte to ord">Ordskille-følsomhet</label>
-            <output id="space-output" for="space-slider">1.00×</output>
-          </div>
-          <input type="range" id="space-slider" min="0.45" max="2.20" step="0.05" value="1.00" />
         </div>
 
         <div class="slider-group">
@@ -198,15 +292,23 @@
           </div>
           <input type="range" id="line-gap-slider" min="1.0" max="2.4" step="0.05" value="1.35" />
         </div>
+
+        <div class="slider-group">
+          <div class="slider-label-row">
+            <label for="space-slider">Ordskille-følsomhet</label>
+            <output id="space-output" for="space-slider">1.00×</output>
+          </div>
+          <input type="range" id="space-slider" min="0.45" max="2.20" step="0.05" value="1.00" />
+        </div>
       </div>
 
-      <!-- SAMMENLEGGBAR SKUFF (FLIS / PIL) FOR AVANSERT TRACING, LUPER OG TERSKEL -->
-      <details class="trace-lab-details reader-collapsible-ui" id="trace-lab-details">
+      <!-- SAMMENLEGGBAR LAB-FLIS INNE I Aa-SKUFFEN -->
+      <details class="trace-lab-details" id="trace-lab-details">
         <summary class="trace-lab-summary">
           <div class="trace-title-group">
             <span class="disclosure-chevron" aria-hidden="true">▸</span>
             <span class="debug-badge">LAB</span>
-            <strong>Avansert typografi, vektor-tracing &amp; ord-lupe</strong>
+            <strong>Vektor-tracing &amp; 3-delt ord-lupe</strong>
           </div>
           <div class="summary-meta-pills">
             <span id="active-algo-pill" class="summary-chip">Vektor-kontur • 3 steg • 0.0 px blur • +9 fylde</span>
@@ -214,82 +316,110 @@
           </div>
         </summary>
 
-        <div class="trace-debug-bar" role="region" aria-label="Debug-kontroller for bokstav-tracing og kantglatting">
-          <div class="trace-debug-top">
-            <div class="trace-mode-buttons" role="group" aria-label="Algoritme for Renset blekk og Nattmodus">
-              <button type="button" class="debug-btn" data-trace-mode="raw" aria-pressed="false" title="1x original piksel-oppløsning (raskest, viser pikseltrappetrinn ved høy zoom)">
-                1. Rå piksler (1×)
-              </button>
-              <button type="button" class="debug-btn" data-trace-mode="superres" aria-pressed="false" title="3x bikubisk oppskalering med sub-piksel iso-kontur">
-                2. Sub-piksel Super-Res (3×)
-              </button>
-              <button type="button" class="debug-btn active" data-trace-mode="vector" aria-pressed="true" title="Ekte Marching Squares sub-piksel kontur-tracing med Chaikin-kurveglatting fylt i Retina-oppløsning">
-                3. Vektor-kontur (Marching Squares)
-              </button>
-              <button type="button" class="debug-btn" data-trace-mode="wireframe" aria-pressed="false" title="Debug: Viser de tracede vektor-stiene og kontrollpunktene oppå originalpikslene">
-                4. Debug: Vektor-trådramme
-              </button>
-            </div>
+        <div class="trace-debug-bar">
+          <div class="trace-mode-buttons" role="group" aria-label="Tracing-algoritme">
+            <button type="button" class="debug-btn" data-trace-mode="raw" aria-pressed="false">
+              1. Rå piksler (1×)
+            </button>
+            <button type="button" class="debug-btn" data-trace-mode="superres" aria-pressed="false">
+              2. Super-Res (3×)
+            </button>
+            <button type="button" class="debug-btn active" data-trace-mode="vector" aria-pressed="true">
+              3. Vektor-kontur
+            </button>
+            <button type="button" class="debug-btn" data-trace-mode="wireframe" aria-pressed="false">
+              4. Trådramme
+            </button>
           </div>
 
           <div class="trace-debug-Controls">
             <div class="mini-control">
-              <label for="smooth-iter-slider">Kurve-glatting (Chaikin):</label>
+              <label for="smooth-iter-slider">Glatting:</label>
               <input type="range" id="smooth-iter-slider" min="0" max="3" step="1" value="3" />
               <output id="smooth-iter-output" for="smooth-iter-slider">3 steg</output>
             </div>
 
             <div class="mini-control">
-              <label for="preblur-slider">Sub-piksel mykhet (Pre-blur):</label>
+              <label for="preblur-slider">Pre-blur:</label>
               <input type="range" id="preblur-slider" min="0" max="2" step="0.5" value="0" />
               <output id="preblur-output" for="preblur-slider">0.0 px</output>
             </div>
 
             <div class="mini-control">
-              <label for="contrast-slider" title="Juster grunn-terskel for hva som regnes som blekk vs. papir ved linje- og ordsegmentering">Segmenterings-terskel:</label>
+              <label for="contrast-slider">Terskel:</label>
               <input type="range" id="contrast-slider" min="-45" max="45" step="3" value="0" />
               <output id="contrast-output" for="contrast-slider">0</output>
             </div>
 
             <label class="checkbox-label" for="toggle-loupe">
               <input type="checkbox" id="toggle-loupe" checked />
-              <span>Vis 1× vs. Tracet lupe ved klikk på ord</span>
+              <span>Vis ord-lupe</span>
             </label>
           </div>
 
-          <!-- LUPE / SAMMENLIGNINGSVINDU FOR VALGT ORD -->
           <div id="word-loupe-panel" class="word-loupe-panel" hidden>
             <div class="loupe-card">
-              <span class="loupe-label">Original 1× piksler (forstørret)</span>
+              <span class="loupe-label">Original 1×</span>
               <canvas id="loupe-raw-canvas"></canvas>
             </div>
             <div class="loupe-card">
-              <span class="loupe-label" id="loupe-traced-title">Tracet / Glattet resultat</span>
+              <span class="loupe-label" id="loupe-traced-title">Vektor-fyll</span>
               <canvas id="loupe-traced-canvas"></canvas>
             </div>
             <div class="loupe-card">
-              <span class="loupe-label">Marching Squares Vektor-kontur</span>
+              <span class="loupe-label">Marching Squares</span>
               <canvas id="loupe-wire-canvas"></canvas>
             </div>
           </div>
         </div>
       </details>
+    </aside>
 
-      <!-- KINDLE-INSPIRERT TOPPLIST SOM ALLTID ER TILGJENGELIG NÅR MENYER ER SKJULT -->
-      <div id="zen-floating-bar" class="zen-floating-bar">
-        <div class="zen-bar-left">
-          <span id="zen-page-indicator" class="zen-page-indicator">Sult — Knut Hamsun (1890)</span>
-          <span id="cache-status-pill" class="cache-status-pill" title="Neste side forhåndslastes i minnet for øyeblikkelig blading">⚡ Cacher neste side...</span>
+    <!-- OVERLAY / MODAL FOR "✂️ Utsnitt & Skjevhet" (Originalbilde med 8 dra-håndtak og Auto-retting) -->
+    <aside id="crop-inspector-sheet" class="crop-inspector-sheet" hidden aria-label="Originalbilde, utsnitt og skjevhetsretting">
+      <div class="panel source-panel">
+        <div class="panel-header">
+          <div>
+            <h2>✂️ Originalbilde, Utsnitt &amp; Skjevhetsretting</h2>
+            <p class="panel-hint">Dra i de blå kantene/hjørnene for å justere utsnittet, eller bruk Rett opp (Auto) på skjeve sider.</p>
+          </div>
+          <div class="panel-actions toolbar">
+            <div class="deskew-pill">
+              <label for="deskew-slider">Rett opp:</label>
+              <input type="range" id="deskew-slider" min="-7" max="7" step="0.25" value="0" />
+              <output id="deskew-output" for="deskew-slider">0.0°</output>
+              <button type="button" id="auto-deskew-btn" class="mini-btn">Auto</button>
+            </div>
+            <label class="checkbox-label" for="show-boxes-toggle">
+              <input type="checkbox" id="show-boxes-toggle" checked />
+              <span>Vis ord</span>
+            </label>
+            <button type="button" id="reset-crop-btn" class="secondary-btn" disabled>
+              Hele siden
+            </button>
+            <button type="button" id="close-crop-modal-btn" class="primary-btn">
+              ✓ Ferdig — Tilbake til boken
+            </button>
+          </div>
         </div>
-        <div class="zen-bar-right">
-          <button type="button" id="zen-prev-btn" class="mini-btn" title="Forrige side (eller trykk i venstre marg)">←</button>
-          <button type="button" id="zen-next-btn" class="mini-btn" title="Neste side (eller trykk i høyre marg)">→</button>
-          <button type="button" id="zen-split-btn" class="mini-btn" title="Vis/skjul originalbilde og utsnitt ved siden av">✂️ Original</button>
-          <button type="button" id="zen-restore-btn" class="mini-btn aa-pill-btn" title="Åpne skrift-, kilde- og visningsmeny (eller trykk i øvre kant av siden)">Aa Meny ▾</button>
+
+        <div class="canvas-stage" id="canvas-stage">
+          <div class="canvas-wrapper" id="canvas-wrapper">
+            <canvas id="source-canvas" aria-label="Kildebilde med detekterte tekstlinjer og ord"></canvas>
+            <canvas id="overlay-canvas" aria-hidden="true"></canvas>
+          </div>
         </div>
+
+        <footer class="panel-footer">
+          <div class="stats-bar" id="stats-bar" aria-live="polite">
+            Laster bilde...
+          </div>
+        </footer>
       </div>
+    </aside>
 
-      <!-- SELVE LIQUID-FLATEN DER ORD-BILDENE WRAPPER -->
+    <!-- SELVE BOKSIDEN (100% av leseflaten!) -->
+    <main class="reader-stage" id="workspace-grid">
       <div
         id="liquid-reader"
         class="liquid-reader mode-clean"
@@ -298,16 +428,26 @@
         aria-label="Flytende piksel-tekst"
       ></div>
 
-      <footer class="panel-footer reader-footer kindle-book-footer">
-        <div class="footer-left">
-          <span class="tip-badge">Kindle-navigering:</span>
-          <span>Trykk i <strong>øvre kant / midten</strong> for meny (Aa) • Trykk i <strong>venstre/høyre marg</strong> eller <strong>sveip</strong> for å bla</span>
-        </div>
-        <div class="footer-right" id="book-progress-label"></div>
+      <!-- Diskret Kindle-statuslinje helt nederst på boksiden -->
+      <footer class="book-micro-statusbar">
+        <span id="book-title-label">Sult — Knut Hamsun (1890)</span>
+        <span id="book-progress-label">Trykk på siden for meny • Sveip for å bla</span>
+        <span id="book-access-label" hidden></span>
       </footer>
-    </section>
-  </main>
+    </main>
 
-  <script src="app.js?v=8" defer></script>
+    <!-- Skjulte kompatibilitets-IDer -->
+    <div id="iiif-book-bar" hidden></div>
+    <button type="button" id="toggle-iiif-btn" hidden></button>
+    <div id="iiif-drawer" hidden></div>
+    <button type="button" id="zen-toggle-btn" hidden></button>
+    <div id="zen-floating-bar" hidden></div>
+    <button type="button" id="zen-restore-btn" hidden></button>
+    <button type="button" id="zen-prev-btn" hidden></button>
+    <button type="button" id="zen-next-btn" hidden></button>
+    <button type="button" id="zen-split-btn" hidden></button>
+  </div>
+
+  <script src="app.js?v=9" defer></script>
 </body>
 </html>

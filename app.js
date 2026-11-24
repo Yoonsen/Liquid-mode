@@ -114,9 +114,9 @@
     iiifBook: null, // { title, pages: [{ label, serviceId }], currentIndex }
   };
 
-  const APP_VERSION = "1.3.0";
+  const APP_VERSION = "1.4.0";
   const APP_RELEASE_SUMMARY =
-    "Kindle-inspirert lesegrensesnitt (boksiden i sentrum, trykk i øvre kant for Aa-meny, trykk i sidemarger for å bla) og automatisk caching av neste side!";
+    "Ny to-delt app: 1) Bibliotek med bokhylle og direkte NB.no-boksøk, og 2) 100 % fullskjerms bokleser med tidsstyrte flytende piller ved trykk!";
 
   // Hurtigminne (RAM-cache) for ferdig nedlastede IIIF-boksider (URL -> HTMLImageElement)
   const pageImageCache = new Map();
@@ -713,11 +713,16 @@
   }
 
   function renderIiifBookNavigator() {
+    const readerViewEl = document.getElementById("reader-view");
+    const resumeTitleEl = document.getElementById("resume-book-title");
     if (!state.iiifBook) {
       iiifBookBar.setAttribute("hidden", "");
+      if (readerViewEl) readerViewEl.classList.add("no-book-pager");
       return;
     }
 
+    if (readerViewEl) readerViewEl.classList.remove("no-book-pager");
+    if (resumeTitleEl) resumeTitleEl.textContent = state.iiifBook.title;
     iiifBookBar.removeAttribute("hidden");
     bookTitleLabel.textContent = state.iiifBook.title;
     bookAccessLabel.textContent = `${state.iiifBook.accessText} • ${state.iiifBook.pages.length} sider`;
@@ -2175,8 +2180,11 @@
     const file = e.target.files?.[0];
     if (!file) return;
     state.iiifBook = null;
-    iiifBookBar.setAttribute("hidden", "");
+    renderIiifBookNavigator();
+    const resumeTitleEl = document.getElementById("resume-book-title");
+    if (resumeTitleEl) resumeTitleEl.textContent = file.name || "Opplastet bilde";
     const objectUrl = URL.createObjectURL(file);
+    openReaderScreen();
     loadExternalImageUrl(objectUrl, false);
   });
 
@@ -2189,8 +2197,11 @@
         const file = item.getAsFile();
         if (file) {
           state.iiifBook = null;
-          iiifBookBar.setAttribute("hidden", "");
+          renderIiifBookNavigator();
+          const resumeTitleEl = document.getElementById("resume-book-title");
+          if (resumeTitleEl) resumeTitleEl.textContent = "Innlimt skjermbilde";
           const objectUrl = URL.createObjectURL(file);
+          openReaderScreen();
           loadExternalImageUrl(objectUrl, false);
           break;
         }
@@ -2198,20 +2209,23 @@
     }
   });
 
-  toggleIiifBtn.addEventListener("click", () => {
-    const isHidden = iiifDrawer.hasAttribute("hidden");
-    if (isHidden) {
-      iiifDrawer.removeAttribute("hidden");
-      toggleIiifBtn.setAttribute("aria-expanded", "true");
-      iiifUrlInput.focus();
-    } else {
-      iiifDrawer.setAttribute("hidden", "");
-      toggleIiifBtn.setAttribute("aria-expanded", "false");
-    }
-  });
+  if (toggleIiifBtn) {
+    toggleIiifBtn.addEventListener("click", () => {
+      const isHidden = iiifDrawer.hasAttribute("hidden");
+      if (isHidden) {
+        iiifDrawer.removeAttribute("hidden");
+        toggleIiifBtn.setAttribute("aria-expanded", "true");
+        iiifUrlInput.focus();
+      } else {
+        iiifDrawer.setAttribute("hidden", "");
+        toggleIiifBtn.setAttribute("aria-expanded", "false");
+      }
+    });
+  }
 
   iiifForm.addEventListener("submit", (e) => {
     e.preventDefault();
+    openReaderScreen();
     handleIiifInput(iiifUrlInput.value);
   });
 
@@ -2357,8 +2371,225 @@
   });
 
   // =========================================================================
-  // 8. KINDLE-INSPIRERT LESEMODUS: TRYKKSONER, TOPPLIST & SVEIP
+  // 8. TO-DELT ARKITEKTUR: BIBLIOTEK + FULLSKJERMS LESER MED TIDSSTYRTE PILLER
   // =========================================================================
+
+  const readerView = document.getElementById("reader-view");
+  const resumeReadingBtn = document.getElementById("resume-reading-btn");
+  const backToLibraryBtn = document.getElementById("back-to-library-btn");
+  const openAaSheetBtn = document.getElementById("open-aa-sheet-btn");
+  const closeAaSheetBtn = document.getElementById("close-aa-sheet-btn");
+  const aaSettingsSheet = document.getElementById("aa-settings-sheet");
+  const openCropModalBtn = document.getElementById("open-crop-modal-btn");
+  const closeCropModalBtn = document.getElementById("close-crop-modal-btn");
+  const cropInspectorSheet = document.getElementById("crop-inspector-sheet");
+  const hudTopPills = document.getElementById("hud-top-pills");
+  const hudBottomPills = document.getElementById("hud-bottom-pills");
+  const nbSearchForm = document.getElementById("nb-search-form");
+  const nbSearchInput = document.getElementById("nb-search-input");
+  const nbSearchResults = document.getElementById("nb-search-results");
+
+  let hudTimerId = null;
+  const HUD_DISPLAY_DURATION_MS = 4200;
+
+  function isAnySheetOpen() {
+    const aaOpen = aaSettingsSheet && !aaSettingsSheet.hasAttribute("hidden");
+    const cropOpen = cropInspectorSheet && !cropInspectorSheet.hasAttribute("hidden");
+    return Boolean(aaOpen || cropOpen);
+  }
+
+  function showTransientHudPills(durationMs = HUD_DISPLAY_DURATION_MS) {
+    if (!readerView) return;
+    readerView.classList.add("hud-visible");
+    if (hudTimerId) {
+      clearTimeout(hudTimerId);
+      hudTimerId = null;
+    }
+    if (!isAnySheetOpen() && durationMs > 0) {
+      hudTimerId = setTimeout(() => {
+        if (!isAnySheetOpen()) {
+          readerView.classList.remove("hud-visible");
+        }
+      }, durationMs);
+    }
+  }
+
+  function hideTransientHudPills() {
+    if (hudTimerId) {
+      clearTimeout(hudTimerId);
+      hudTimerId = null;
+    }
+    if (aaSettingsSheet) aaSettingsSheet.setAttribute("hidden", "");
+    if (openAaSheetBtn) openAaSheetBtn.setAttribute("aria-expanded", "false");
+    if (readerView) readerView.classList.remove("hud-visible");
+  }
+
+  function openReaderScreen() {
+    document.body.dataset.appScreen = "reader";
+    // Vis de flytende pillene i 3.5 sekunder ved åpning så brukeren ser at de finnes,
+    // og la dem deretter gli mykt bort for 100 % ren bokside!
+    showTransientHudPills(3500);
+  }
+
+  function openLibraryScreen() {
+    hideTransientHudPills();
+    if (cropInspectorSheet) cropInspectorSheet.setAttribute("hidden", "");
+    document.body.dataset.appScreen = "library";
+  }
+
+  if (resumeReadingBtn) {
+    resumeReadingBtn.addEventListener("click", () => openReaderScreen());
+  }
+  if (backToLibraryBtn) {
+    backToLibraryBtn.addEventListener("click", () => openLibraryScreen());
+  }
+
+  // Åpne / lukke "Aa Utseende"-skuffen fra den flytende pillen
+  if (openAaSheetBtn && aaSettingsSheet) {
+    openAaSheetBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const willOpen = aaSettingsSheet.hasAttribute("hidden");
+      if (willOpen) {
+        aaSettingsSheet.removeAttribute("hidden");
+        openAaSheetBtn.setAttribute("aria-expanded", "true");
+        showTransientHudPills(0); // Hold pillene synlige mens skuffen er åpen
+      } else {
+        aaSettingsSheet.setAttribute("hidden", "");
+        openAaSheetBtn.setAttribute("aria-expanded", "false");
+        showTransientHudPills(2200);
+      }
+    });
+  }
+
+  if (closeAaSheetBtn && aaSettingsSheet) {
+    closeAaSheetBtn.addEventListener("click", () => {
+      aaSettingsSheet.setAttribute("hidden", "");
+      if (openAaSheetBtn) openAaSheetBtn.setAttribute("aria-expanded", "false");
+      hideTransientHudPills();
+    });
+  }
+
+  // Åpne / lukke "✂️ Utsnitt & Skjevhet"-modalen
+  if (openCropModalBtn && cropInspectorSheet) {
+    openCropModalBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (aaSettingsSheet) aaSettingsSheet.setAttribute("hidden", "");
+      cropInspectorSheet.removeAttribute("hidden");
+      drawOverlayBoxes();
+      showTransientHudPills(0);
+    });
+  }
+
+  if (closeCropModalBtn && cropInspectorSheet) {
+    closeCropModalBtn.addEventListener("click", () => {
+      cropInspectorSheet.setAttribute("hidden", "");
+      hideTransientHudPills();
+    });
+  }
+
+  // Forny tidsavbruddet hvis brukeren rører på de flytende pillene
+  [hudTopPills, hudBottomPills].forEach((bar) => {
+    if (!bar) return;
+    bar.addEventListener("pointerDown", () => showTransientHudPills(HUD_DISPLAY_DURATION_MS));
+    bar.addEventListener("pointermove", () => {
+      if (readerView?.classList.contains("hud-visible") && !isAnySheetOpen()) {
+        showTransientHudPills(HUD_DISPLAY_DURATION_MS);
+      }
+    });
+  });
+
+  // Koble bokkortene i Biblioteket til å åpne valgt bok direkte i Leseren
+  function bindBookCards(container) {
+    if (!container) return;
+    container.querySelectorAll(".book-card").forEach((card) => {
+      card.addEventListener("click", () => {
+        const urn = card.dataset.urn;
+        const pageIdx = card.dataset.page ? Number(card.dataset.page) : null;
+        const synthetic = card.dataset.synthetic;
+        const titleText = card.querySelector("h3")?.textContent || "Valgt bok";
+        const resumeTitleEl = document.getElementById("resume-book-title");
+        if (resumeTitleEl) resumeTitleEl.textContent = titleText;
+
+        openReaderScreen();
+        if (urn) {
+          iiifUrlInput.value = `https://urn.nb.no/${urn}`;
+          handleIiifInput(urn, pageIdx);
+        } else if (synthetic) {
+          renderIiifBookNavigator();
+          generateSyntheticScan(synthetic);
+        }
+      });
+    });
+  }
+
+  bindBookCards(document.getElementById("curated-book-grid"));
+
+  // Søk direkte i Nasjonalbibliotekets åpne Public Domain-bøker
+  if (nbSearchForm && nbSearchInput && nbSearchResults) {
+    nbSearchForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const q = nbSearchInput.value.trim();
+      if (!q) return;
+
+      nbSearchResults.removeAttribute("hidden");
+      nbSearchResults.innerHTML = `<p class="panel-hint">Søker i Nasjonalbiblioteket etter «${q}»...</p>`;
+
+      try {
+        const url = `https://api.nb.no/catalog/v1/items?q=${encodeURIComponent(
+          q
+        )}&filter=contentClasses:publicdomain&filter=mediatype:b%C3%B8ker&size=8`;
+        const resp = await fetch(url);
+        const data = await resp.json();
+        const items = data?._embedded?.items || [];
+
+        if (items.length === 0) {
+          nbSearchResults.innerHTML = `<p class="panel-hint">Ingen fritt tilgjengelige (Public Domain) bøker funnet for «${q}».</p>`;
+          return;
+        }
+
+        nbSearchResults.innerHTML = "";
+        items.forEach((it) => {
+          const m = it.metadata || {};
+          const urn = m.identifiers?.urn;
+          if (!urn) return;
+          const title = m.title || "Uten tittel";
+          const author = (m.creators || []).join(", ") || "Ukjent forfatter";
+          const year = m.originInfo?.issued || "";
+          const pages = m.pageCount ? `${m.pageCount} s.` : "";
+          const thumb =
+            it._links?.thumbnail_large?.href ||
+            `https://www.nb.no/services/image/resolver/${urn}_C1/full/0,220/0/native.jpg`;
+
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "book-card";
+          btn.dataset.urn = urn;
+          btn.dataset.page = "7";
+          btn.innerHTML = `
+            <div class="book-cover">
+              <img src="${thumb}" alt="" loading="lazy" />
+              <span class="book-tag">IIIF ${year ? "• " + year : ""}</span>
+            </div>
+            <div class="book-card-body">
+              <h3></h3>
+              <p class="book-author"></p>
+              <span class="book-meta-note"></span>
+            </div>
+          `;
+          btn.querySelector("h3").textContent = title;
+          btn.querySelector(".book-author").textContent = author;
+          btn.querySelector(".book-meta-note").textContent = [year, pages]
+            .filter(Boolean)
+            .join(" • ");
+          nbSearchResults.appendChild(btn);
+        });
+
+        bindBookCards(nbSearchResults);
+      } catch (err) {
+        nbSearchResults.innerHTML = `<p class="panel-hint">Feil ved søk mot NB.no: ${err.message}</p>`;
+      }
+    });
+  }
 
   function updateZenPageLabel() {
     if (state.iiifBook) {
@@ -2369,60 +2600,24 @@
       if (zenPageIndicator) {
         zenPageIndicator.textContent = `${state.iiifBook.title} • ${page ? page.label : ""}`;
       }
+      if (bookTitleLabel) {
+        bookTitleLabel.textContent = state.iiifBook.title;
+      }
       if (bookProgressLabel) {
-        bookProgressLabel.textContent = `Oppslag ${idx} av ${total} (${pct}%)`;
+        bookProgressLabel.textContent = `${page ? page.label : ""} • ${idx} / ${total} (${pct}%)`;
       }
     } else {
       if (zenPageIndicator) {
-        zenPageIndicator.textContent = "Pixel-Liquid Mode • Lesemodus";
+        zenPageIndicator.textContent = "Pixel-Liquid Mode";
+      }
+      if (bookTitleLabel) {
+        const resumeTitleEl = document.getElementById("resume-book-title");
+        bookTitleLabel.textContent = resumeTitleEl?.textContent || "Pixel-Liquid Mode";
       }
       if (bookProgressLabel) {
-        bookProgressLabel.textContent = `${state.detectedWords.length} ord`;
+        bookProgressLabel.textContent = `${state.detectedWords.length} ord • Trykk på siden for meny`;
       }
     }
-  }
-
-  function toggleReaderMenus(forceCollapsed = null) {
-    const isCollapsed =
-      typeof forceCollapsed === "boolean"
-        ? forceCollapsed
-        : !document.body.classList.contains("menus-collapsed");
-
-    document.body.classList.toggle("menus-collapsed", isCollapsed);
-    updateZenPageLabel();
-
-    if (zenRestoreBtn) {
-      zenRestoreBtn.textContent = isCollapsed ? "Aa Meny ▾" : "Lukk meny ▴";
-    }
-    if (zenToggleBtn) {
-      zenToggleBtn.classList.toggle("active", isCollapsed);
-      zenToggleBtn.setAttribute("aria-pressed", isCollapsed ? "true" : "false");
-    }
-  }
-
-  if (zenToggleBtn) {
-    zenToggleBtn.addEventListener("click", () => toggleReaderMenus());
-  }
-  if (zenRestoreBtn) {
-    zenRestoreBtn.addEventListener("click", () => toggleReaderMenus());
-  }
-  if (zenPrevBtn) {
-    zenPrevBtn.addEventListener("click", () => turnBookPage(-1));
-  }
-  if (zenNextBtn) {
-    zenNextBtn.addEventListener("click", () => turnBookPage(1));
-  }
-  if (zenSplitBtn) {
-    zenSplitBtn.addEventListener("click", () => {
-      const currentView = workspaceGrid.dataset.activeView;
-      const nextView = currentView === "liquid" ? "both" : "liquid";
-      workspaceGrid.dataset.activeView = nextView;
-      mobileTabButtons.forEach((b) => {
-        b.classList.toggle("active", b.dataset.viewTarget === nextView);
-      });
-      zenSplitBtn.textContent =
-        nextView === "both" ? "📖 Kun bokside" : "✂️ Original";
-    });
   }
 
   function turnBookPage(delta) {
@@ -2435,7 +2630,7 @@
     return true;
   }
 
-  // Sveip (venstre/høyre, eller opp ved bunnen / ned ved toppen) og Kindle-trykksoner i leseflaten
+  // Sveip (venstre/høyre, eller opp ved bunnen / ned ved toppen) og trykk for tidsstyrte piller
   let touchStartX = 0;
   let touchStartY = 0;
   let touchStartTime = 0;
@@ -2463,9 +2658,9 @@
     // 1. Horisontalt sveip (venstre = neste side, høyre = forrige side)
     if (absX >= 58 && absX > absY * 1.35 && dt < 850) {
       if (dx < 0) {
-        turnBookPage(1); // Sveip mot venstre -> Neste side
+        turnBookPage(1);
       } else {
-        turnBookPage(-1); // Sveip mot høyre -> Forrige side
+        turnBookPage(-1);
       }
       return;
     }
@@ -2473,47 +2668,56 @@
     // 2. Vertikalt sveip når brukeren allerede er helt nederst eller øverst i leseflaten
     if (absY >= 85 && absY > absX * 1.4 && dt < 750) {
       if (dy < 0 && wasAtBottomOnTouchStart) {
-        turnBookPage(1); // Sveip opp fra bunnen -> Neste side
+        turnBookPage(1);
         return;
       }
       if (dy > 0 && wasAtTopOnTouchStart) {
-        turnBookPage(-1); // Sveip ned fra toppen -> Forrige side
+        turnBookPage(-1);
         return;
       }
     }
 
-    // 3. Kindle-trykksoner ved kort trykk/klikk på siden:
-    // - Trykk i venstre marg (0..14% av bredden) -> Forrige side
-    // - Trykk i høyre marg (86..100% av bredden) -> Neste side
-    // - Trykk i øvre kant (topp 22% av høyden) eller på bakgrunnen i midten -> Veksle Aa-meny!
+    // 3. Kort trykk på boksiden:
+    // - Hvis Aa-skuffen er åpen og brukeren trykker på selve boksiden (utenom ord når LAB er åpen), lukk skuffen og pillene!
+    // - Trykk i venstre ytterkant (0..12%) -> Forrige side
+    // - Trykk i høyre ytterkant (88..100%) -> Neste side
+    // - Trykk ellers på siden -> Vis de flytende pillene i 4.2 sekunder (eller skjul dem hvis de allerede vises)!
     if (absX < 12 && absY < 12 && dt < 380) {
+      const aaOpen = aaSettingsSheet && !aaSettingsSheet.hasAttribute("hidden");
+      if (aaOpen) {
+        const labOpen = document.getElementById("trace-lab-details")?.hasAttribute("open");
+        const clickedWord = e.target.closest(".word-token");
+        // Hvis LAB-flisen er åpen og man klikker på et ord, oppdateres bare 3-delers lupen
+        if (labOpen && clickedWord) return;
+        hideTransientHudPills();
+        return;
+      }
+
       const rect = liquidReader.getBoundingClientRect();
       const relX = (e.clientX - rect.left) / Math.max(1, rect.width);
       const relY = (e.clientY - rect.top) / Math.max(1, rect.height);
-      const clickedWord = e.target.closest(".word-token");
-      const menusAreHidden = document.body.classList.contains("menus-collapsed");
 
-      // Når menyene er skjult (Kindle-lesemodus), fungerer trykksonene overalt (også om man treffer et ord)
-      if (menusAreHidden || !clickedWord) {
-        if (relY <= 0.20) {
-          // Øvre kant -> Åpne/lukk meny
-          toggleReaderMenus();
-        } else if (relX <= 0.14 && state.iiifBook) {
-          // Venstre marg -> Forrige side
-          turnBookPage(-1);
-        } else if (relX >= 0.86 && state.iiifBook) {
-          // Høyre marg -> Neste side
-          turnBookPage(1);
-        } else {
-          // Midtsonen -> Åpne/lukk meny
-          toggleReaderMenus();
-        }
+      if (relY > 0.16 && relX <= 0.12 && state.iiifBook) {
+        turnBookPage(-1);
+      } else if (relY > 0.16 && relX >= 0.88 && state.iiifBook) {
+        turnBookPage(1);
+      } else if (readerView?.classList.contains("hud-visible")) {
+        hideTransientHudPills();
+      } else {
+        showTransientHudPills(HUD_DISPLAY_DURATION_MS);
       }
     }
   });
 
-  // Piltaster venstre/høyre for å bla når fokus ikke er i et input-felt
+  // Piltaster venstre/høyre for å bla, Escape for å lukke skuffer/piller
   window.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      if (cropInspectorSheet && !cropInspectorSheet.hasAttribute("hidden")) {
+        cropInspectorSheet.setAttribute("hidden", "");
+      }
+      hideTransientHudPills();
+      return;
+    }
     const tag = document.activeElement?.tagName;
     if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
     if (e.key === "ArrowRight") {
