@@ -66,6 +66,7 @@
   const lineGapOutput = document.getElementById("line-gap-output");
 
   const renderModeButtons = document.querySelectorAll("[data-render-mode]");
+  const flowModeButtons = document.querySelectorAll("[data-flow-mode]");
   const traceModeButtons = document.querySelectorAll("[data-trace-mode]");
   const activeAlgoPill = document.getElementById("active-algo-pill");
   const tracePerfPill = document.getElementById("trace-perf-pill");
@@ -103,6 +104,9 @@
     hoveredWordId: null,
     selectedWord: null,
     renderMode: "clean",   // 'clean' (standard!) | 'paper' | 'dark'
+    flowMode: "auto",      // 'auto' (Original bredde når plass -> Liquid ved zoom) | 'liquid' | 'lines'
+    baseNaturalLineWordSum: 640, // 85-persentil summert ordbredde (uskalert) for en full boklinje
+    baseNaturalLineWordCount: 9, // Gjennomsnittlig antall ord i en full boklinje
     traceMode: "vector",   // 'raw' | 'superres' | 'vector' | 'wireframe'
     smoothIterations: 3,   // 3 Chaikin-iterasjoner (høy kurve-glatting)
     preblurRadius: 0.0,    // 0.0 px sub-piksel utjevning (lav pre-blur bevarer skarpe detaljer)
@@ -114,9 +118,9 @@
     iiifBook: null, // { title, pages: [{ label, serviceId }], currentIndex }
   };
 
-  const APP_VERSION = "1.4.0";
+  const APP_VERSION = "1.4.1";
   const APP_RELEASE_SUMMARY =
-    "Ny to-delt app: 1) Bibliotek med bokhylle og direkte NB.no-boksøk, og 2) 100 % fullskjerms bokleser med tidsstyrte flytende piller ved trykk!";
+    "Smart linjebryting (Auto): Beholder bokens originale linjelengde når skjermen har ekstra plass, og går automatisk over i kontinuerlig Liquid-flyt når du forstørrer!";
 
   // Hurtigminne (RAM-cache) for ferdig nedlastede IIIF-boksider (URL -> HTMLImageElement)
   const pageImageCache = new Map();
@@ -1841,13 +1845,31 @@
     }
 
     const fragment = document.createDocumentFragment();
+    const lineMetrics = [];
 
-    for (const line of state.detectedLines) {
+    state.detectedLines.forEach((line, lineIdx) => {
       if (line.isParagraphStart) {
         const br = document.createElement("div");
         br.className = "liquid-paragraph-break";
         br.setAttribute("aria-hidden", "true");
         fragment.appendChild(br);
+      } else if (lineIdx > 0) {
+        // Mykt linjeskift mellom originale boklinjer (aktivt når original linjebredde får plass på skjermen)
+        const lbr = document.createElement("div");
+        lbr.className = "liquid-line-break";
+        lbr.setAttribute("aria-hidden", "true");
+        fragment.appendChild(lbr);
+      }
+
+      let wordWidthSum = 0;
+      for (const word of line.words) {
+        wordWidthSum += word.w;
+      }
+      if (line.words.length >= 3) {
+        lineMetrics.push({
+          wordSum: wordWidthSum,
+          count: line.words.length,
+        });
       }
 
       for (const word of line.words) {
@@ -1892,9 +1914,21 @@
         token.appendChild(wCanvas);
         fragment.appendChild(token);
       }
+    });
+
+    // Beregn 85-persentil linjebredde (en typisk full tekstlinje i originalboken)
+    if (lineMetrics.length > 0) {
+      lineMetrics.sort((a, b) => a.wordSum - b.wordSum);
+      const p85Idx = Math.min(
+        lineMetrics.length - 1,
+        Math.floor(lineMetrics.length * 0.85)
+      );
+      state.baseNaturalLineWordSum = lineMetrics[p85Idx].wordSum;
+      state.baseNaturalLineWordCount = Math.max(2, lineMetrics[p85Idx].count);
     }
 
     liquidReader.appendChild(fragment);
+    evaluateSmartLineFlow();
 
     // Velg første ord med litt lengde som standard i lupen hvis ingen er valgt ennå
     if (!state.selectedWord && state.detectedWords.length > 0) {
@@ -1937,6 +1971,55 @@
       "--liquid-line-gap",
       `${Math.max(4, lineGapPx)}px`
     );
+    evaluateSmartLineFlow();
+  }
+
+  /**
+   * Smart linjebryting:
+   * - I "auto"-modus måler vi bredden til en full original boklinje ved nåværende skala.
+   * - Hvis den originale linjebredden får plass inne i leseflaten (f.eks. på Mac ved vanlig zoom),
+   *   beholder vi bokens originale linjeskift og linjelengde (preserve-original-lines),
+   *   slik at ord fra linjen under ikke trekkes opp!
+   * - Så snart du forstørrer (med Cmd-+ eller slider) eller leser på en smal mobilskjerm
+   *   slik at originallinjen ville blitt brutt på midten, glir den sømløst over i
+   *   kontinuerlig Liquid-flyt (continuous-liquid-flow)!
+   */
+  function evaluateSmartLineFlow() {
+    if (!liquidReader) return;
+    const wordGapPx = Math.round(8 * state.scaleFactor);
+    const naturalLinePx = Math.round(
+      state.baseNaturalLineWordSum * state.scaleFactor +
+        Math.max(0, state.baseNaturalLineWordCount - 1) * wordGapPx +
+        14
+    );
+
+    liquidReader.style.setProperty("--natural-column-width", `${naturalLinePx}px`);
+
+    const readerWidth = liquidReader.clientWidth || window.innerWidth;
+    const minSidePadding = 44; // Minste samlede venstre+høyre marg
+    const availableWidth = Math.max(180, readerWidth - minSidePadding);
+
+    let keepOriginalLines = false;
+    if (state.flowMode === "lines") {
+      keepOriginalLines = true;
+    } else if (state.flowMode === "liquid") {
+      keepOriginalLines = false;
+    } else {
+      // "auto": Behold original linjelengde når hele boklinjen får plass i vinduet!
+      keepOriginalLines = naturalLinePx <= availableWidth;
+    }
+
+    liquidReader.classList.toggle("preserve-original-lines", keepOriginalLines);
+    liquidReader.classList.toggle("continuous-liquid-flow", !keepOriginalLines);
+  }
+
+  if (typeof ResizeObserver !== "undefined" && liquidReader) {
+    const ro = new ResizeObserver(() => {
+      evaluateSmartLineFlow();
+    });
+    ro.observe(liquidReader);
+  } else {
+    window.addEventListener("resize", () => evaluateSmartLineFlow());
   }
 
   function updateStatsBar() {
@@ -2293,6 +2376,19 @@
 
       updateActiveAlgoSummaryPill();
       renderLiquidWords(currentEffectiveInkThreshold());
+    });
+  });
+
+  flowModeButtons.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      flowModeButtons.forEach((b) => {
+        b.classList.remove("active");
+        b.setAttribute("aria-pressed", "false");
+      });
+      btn.classList.add("active");
+      btn.setAttribute("aria-pressed", "true");
+      state.flowMode = btn.dataset.flowMode;
+      evaluateSmartLineFlow();
     });
   });
 

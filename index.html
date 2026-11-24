@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="light dark" />
   <meta name="text-scale" content="scale" />
   <title>Pixel-Liquid Mode — Bibliotek &amp; Leseflate uten OCR</title>
-  <link rel="stylesheet" href="styles.css?v=9" />
+  <link rel="stylesheet" href="styles.css?v=10" />
 </head>
 <body data-app-screen="library">
   <!-- OPPDATERINGSVARSEL (varsler når ny versjon er rullet ut på GitHub Pages) -->
@@ -32,7 +32,7 @@
         <div>
           <div class="title-with-version">
             <h1>Pixel-Liquid Mode</h1>
-            <span id="app-version-badge" class="version-pill" title="Installert versjon">v1.4.0</span>
+            <span id="app-version-badge" class="version-pill" title="Installert versjon">v1.4.1</span>
           </div>
           <p class="subtitle">Universell leseflyt på pikselnivå — helt uten OCR</p>
         </div>
@@ -268,6 +268,19 @@
         </button>
       </div>
 
+      <div class="theme-pills flow-mode-pills" role="group" aria-label="Linjebryting og bredde">
+        <span class="pill-group-label">Linjebryting:</span>
+        <button type="button" class="pill-btn active" data-flow-mode="auto" aria-pressed="true" title="Beholder originalens linjelengde når det er god plass på skjermen, og blir automatisk Liquid når du forstørrer eller bruker liten skjerm!">
+          Auto (Original bredde → Liquid)
+        </button>
+        <button type="button" class="pill-btn" data-flow-mode="liquid" aria-pressed="false" title="Fyller hele leseflatens bredde kontinuerlig ved å trekke opp ord fra neste linje">
+          Full Liquid-flyt
+        </button>
+        <button type="button" class="pill-btn" data-flow-mode="lines" aria-pressed="false" title="Tvinger hvert linjeskift fra originalboken til alltid å starte på ny linje">
+          Låste originallinjer
+        </button>
+      </div>
+
       <div class="controls-bar" role="region" aria-label="Lesekontroller">
         <div class="slider-group">
           <div class="slider-label-row">
@@ -448,6 +461,6 @@
     <button type="button" id="zen-split-btn" hidden></button>
   </div>
 
-  <script src="app.js?v=9" defer></script>
+  <script src="app.js?v=10" defer></script>
 </body>
 </html>

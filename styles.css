@@ -1072,10 +1072,39 @@ input[type="text"] {
   inline-size: 4.5rem;
 }
 
-/* Ord-tokens i Liquid-leseren */
+/* Ord-tokens og linjeskift i Liquid-leseren */
 .liquid-paragraph-break {
   flex-basis: 100%;
   block-size: 0.75rem;
+}
+
+/* Mykt linjeskift mellom originale boklinjer:
+   - Aktivt når det er ekstra plass på skjermen (preserve-original-lines)
+   - Skjult når teksten trenger å flyte kontinuerlig på smal skjerm / ved zoom (continuous-liquid-flow) */
+.liquid-line-break {
+  flex-basis: 100%;
+  block-size: 0;
+}
+
+.liquid-reader.continuous-liquid-flow .liquid-line-break {
+  display: none;
+}
+
+.liquid-reader.preserve-original-lines {
+  /* Sentrer den originale satsbredden pent på siden når det er ekstra plass til overs */
+  padding-inline: max(
+    clamp(1rem, 4vw, 3rem),
+    calc((100% - var(--natural-column-width, 48rem)) / 2)
+  );
+}
+
+.pill-group-label {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  margin-right: 0.25rem;
 }
 
 .word-token {

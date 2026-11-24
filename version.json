@@ -1,5 +1,5 @@
 {
-  "version": "1.4.0",
-  "updatedAt": "2026-11-24T14:40:00+01:00",
-  "summary": "Ny to-delt app: 1) Bibliotek med bokhylle og direkte NB.no-boksøk, og 2) 100 % fullskjerms bokleser med tidsstyrte flytende piller ved trykk!"
+  "version": "1.4.1",
+  "updatedAt": "2026-11-24T15:08:00+01:00",
+  "summary": "Smart linjebryting (Auto): Beholder bokens originale linjelengde når skjermen har ekstra plass, og går automatisk over i kontinuerlig Liquid-flyt når du forstørrer!"
 }
