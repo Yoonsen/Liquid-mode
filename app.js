@@ -126,9 +126,9 @@
     iiifBook: null, // { title, pages: [{ label, serviceId }], currentIndex }
   };
 
-  const APP_VERSION = "1.6.0";
+  const APP_VERSION = "1.6.1";
   const APP_RELEASE_SUMMARY =
-    "Sammensying av orddeling med bindestrek (bok- + bad -> bokbad i Liquid-flyt) og treffsikker avsnittsgjenkjenning via både innrykk, kortlinjer og linjeavstand!";
+    "Presis bindestreks-geometri: krever nå horisontal strekform (bredere enn høy, <= 24 % av linjehøyden) slik at vanlige sluttbokstaver (e, r, n) og punktum/komma aldri limes til neste linje!";
 
   // Hurtigminne (RAM-cache) for ferdig nedlastede IIIF-boksider (URL -> HTMLImageElement)
   const pageImageCache = new Map();
@@ -140,7 +140,7 @@
   // =========================================================================
 
   const HAMSUN_SULT_URN = "URN:NBN:no-nb_digibok_2015051929001";
-  const HAMSUN_SULT_DEFAULT_PAGE_INDEX = 8; // _0007 (Første kapittel: "Det var i den Tid, jeg gik omkring og sulted i Kristiania...")
+  const HAMSUN_SULT_DEFAULT_PAGE_INDEX = 10; // _0011 (Første kapittel: "Det var i den Tid, jeg gik omkring og sulted i Kristiania...")
 
   /**
    * Genererer et realistisk skannet dokument med gulnet papir, støy,
@@ -1442,37 +1442,59 @@
       const normH = Math.max(6, normBottom - normTop + 1);
 
       /**
-       * Geometrisk deteksjon av bindestrek (- eller =) helt til høyre på en linje:
-       * En bindestrek er smal (3..70% av linjehøyden), har lav vertikal utstrekning
-       * (<= 46% av linjehøyden), og ligger sentrert rundt x-høyden (yCore).
+       * Streng geometrisk deteksjon av ekte bindestrek (- eller =) helt til høyre på en linje:
+       * 1. Bredde: 4 px opp til 52 % av linjehøyden.
+       * 2. Vertikal tykkelse (inkH): Maks 24 % av linjehøyden (vanlige små bokstaver som
+       *    e, r, n, s, a, o er 40–50 % av linjehøyden og filtreres dermed alltid bort!).
+       * 3. Aspektforhold (runW / inkH >= 1.3): Må være tydelig bredere enn den er høy
+       *    (filtrerer bort punktum, komma, semikolon og smale bokstavstammer).
+       * 4. Vertikal posisjon: Sentrert rundt x-høyden (yCore), godt klar av både
+       *    topp-ascendere og baseline/descendere.
        */
       function checkHyphenGeometry(colStart, colEnd) {
         const runW = colEnd - colStart + 1;
-        if (runW < 3 || runW > Math.max(20, Math.round(bandH * 0.72))) {
+        if (runW < 4 || runW > Math.max(16, Math.round(bandH * 0.52))) {
           return false;
         }
         let minInkY = absBottom + 1;
         let maxInkY = absTop - 1;
         let inkPixels = 0;
+        let colsWithInk = 0;
 
         for (let c = colStart; c <= colEnd; c++) {
           const absX = x0 + c;
+          let colHasInk = false;
           for (let y = absTop; y <= absBottom; y++) {
             if (state.gray[y * fullW + absX] < inkThreshold) {
               if (y < minInkY) minInkY = y;
               if (y > maxInkY) maxInkY = y;
               inkPixels++;
+              colHasInk = true;
             }
           }
+          if (colHasInk) colsWithInk++;
         }
-        if (inkPixels < 2 || maxInkY < minInkY) return false;
+        if (inkPixels < 3 || maxInkY < minInkY || colsWithInk < runW * 0.75) {
+          return false;
+        }
 
         const inkH = maxInkY - minInkY + 1;
         const midY = (minInkY + maxInkY) * 0.5;
-        const isVerticallyCompact = inkH <= Math.max(10, Math.round(bandH * 0.46));
-        const isCenteredOnXHeight = Math.abs(midY - yCore) <= bandH * 0.30;
-        const clearsTopAscenders = minInkY >= absTop + Math.max(1, Math.floor(bandH * 0.12));
-        return isVerticallyCompact && isCenteredOnXHeight && clearsTopAscenders;
+
+        const isThinHorizontalStroke =
+          inkH <= Math.max(7, Math.round(bandH * 0.24)) &&
+          runW >= inkH * 1.3;
+        const isCenteredOnXHeight =
+          midY >= yCore - bandH * 0.16 && midY <= yCore + bandH * 0.11;
+        const clearsTopAndBottom =
+          minInkY >= absTop + Math.max(3, Math.floor(bandH * 0.22)) &&
+          maxInkY <= absBottom - Math.max(3, Math.floor(bandH * 0.20));
+
+        return (
+          isThinHorizontalStroke &&
+          isCenteredOnXHeight &&
+          clearsTopAndBottom
+        );
       }
 
       const padX = 2;
@@ -1510,10 +1532,10 @@
         allWords.push(wordObj);
       }
 
-      // Sjekk om siste ord på linjen ender med en bindestrek (tre tilfeller):
+      // Sjekk om siste ord på linjen ender med en frittstående bindestrek (to tilfeller):
       // A) Bindestreken ble skilt ut som en egen liten "wordSpan" helt til høyre
-      // B) Bindestreken er siste "charRun" inne i siste ord
-      // C) Bindestreken henger så vidt sammen med siste bokstav som en smal horisontal "hale"
+      // B) Bindestreken er siste frittstående "charRun" inne i siste ord
+      // (Vi kutter aldri inne i et sammenhengende bokstavsegment!)
       if (lineWords.length >= 1 && charRuns.length >= 2) {
         const lastRun = charRuns[charRuns.length - 1];
         const prevRun = charRuns[charRuns.length - 2];
@@ -1539,29 +1561,10 @@
           prevRun.left >= lastWord.spanLeft &&
           checkHyphenGeometry(lastRun.left, lastRun.right)
         ) {
-          // Tilfelle B: Bindestreken er siste charRun inne i siste ord
+          // Tilfelle B: Bindestreken er siste frittstående charRun inne i siste ord
           const trimmedRight = Math.min(x1 - 1, x0 + prevRun.right + padX);
           lastWord.hasTrailingHyphen = true;
           lastWord.wWithoutHyphen = Math.max(4, trimmedRight - lastWord.x + 1);
-        } else {
-          // Tilfelle C: Sjekk om de ytterste kolonnene i lastRun utgjør en smal bindestrek-hale
-          const lastRunW = lastRun.right - lastRun.left + 1;
-          const tailW = Math.min(
-            Math.max(4, Math.round(bandH * 0.34)),
-            Math.floor(lastRunW * 0.42)
-          );
-          if (
-            tailW >= 4 &&
-            lastRunW >= Math.round(bandH * 0.65) &&
-            checkHyphenGeometry(lastRun.right - tailW + 1, lastRun.right)
-          ) {
-            const trimmedRight = Math.min(
-              x1 - 1,
-              x0 + (lastRun.right - tailW) + 1
-            );
-            lastWord.hasTrailingHyphen = true;
-            lastWord.wWithoutHyphen = Math.max(4, trimmedRight - lastWord.x + 1);
-          }
         }
       }
 

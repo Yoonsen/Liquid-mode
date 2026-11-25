@@ -1,5 +1,5 @@
 {
-  "version": "1.6.0",
-  "updatedAt": "2026-11-24T21:34:00+01:00",
-  "summary": "Sammensying av orddeling med bindestrek (bok- + bad -> bokbad i Liquid-flyt) og treffsikker avsnittsgjenkjenning via både innrykk, kortlinjer og linjeavstand!"
+  "version": "1.6.1",
+  "updatedAt": "2026-11-25T14:25:00+01:00",
+  "summary": "Presis bindestreks-geometri: krever nå horisontal strekform (bredere enn høy, <= 24 % av linjehøyden) slik at vanlige sluttbokstaver (e, r, n) og punktum/komma aldri limes til neste linje!"
 }
