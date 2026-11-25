@@ -1,5 +1,5 @@
 {
-  "version": "1.6.1",
-  "updatedAt": "2026-11-25T14:25:00+01:00",
-  "summary": "Presis bindestreks-geometri: krever nå horisontal strekform (bredere enn høy, <= 24 % av linjehøyden) slik at vanlige sluttbokstaver (e, r, n) og punktum/komma aldri limes til neste linje!"
+  "version": "1.7.0",
+  "updatedAt": "2026-11-25T14:35:00+01:00",
+  "summary": "Lokal grunnlinje- og helnings-oppretting (De-jagg): hvert ord klippes og rettes opp etter sin lokale posisjon og helning langs linjen, slik at siste ord på en skjev/krum linje møter første ord på neste linje snorrett!"
 }

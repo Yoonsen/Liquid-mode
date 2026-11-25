@@ -40,7 +40,7 @@ I stedet for tradisjonell panorering/zooming segmenterer appen tekstlinjer og en
 
 ## 3. Veikart & Status
 
-### ✅ Fullført i v1.4 – v1.6
+### ✅ Fullført i v1.4 – v1.7
 - [x] To-delt visning: **Bibliotek** (kuraterte bøker + direkte søk mot NB.no Public Domain) og **Fullskjerms leser** med tidsstyrte flytende HUD-piller (`← Bibliotek` og `Aa Utseende`).
 - [x] Nytt **Pixel-to-Liquid SVG-favicon** (`favicon.svg`).
 - [x] Smart linjebryting (`Auto`): Beholder original linjelengde når skjermen har plass, og går automatisk over i Liquid-flyt ved forstørrelse.
@@ -48,15 +48,14 @@ I stedet for tradisjonell panorering/zooming segmenterer appen tekstlinjer og en
 - [x] **Fase 1.1: Lokal adaptiv terskel (2D Integral Image / Summed-Area Table)** for bokrygg-skygger (*gutter shadow*) og ujevn belysning på pocketbøker.
 - [x] **Fase 1.2: Automatisk tekstblokk-deteksjon (Auto-beskjæring)** som skreller bort mørke skannekanter og bokrygg-striper + egen `✨ Auto-beskjær`-knapp i utsnittspanelet.
 - [x] **Fler-signals avsnittsgjenkjenning (v1.6.0):** Kombinerer 1) ekstra vertikal linjeavstand, 2) første-linjes innrykk i klassisk boksats (`> 0.65 × linjehøyde` fra venstremarg), og 3) kort avslutningslinje på foregående linje (`> 14 %` før høyremarg), med visuelt innrykk på nye avsnitt.
-- [x] **Geometrisk orddeling og bindestrek-sammensying (v1.6.0):** Gjenkjenner bindestrek (`-` / `=`) ved linjeslutt via pikselgeometri (lav høyde sentrert rundt x-høyden `yCore`), trimmer bort bindestreken og syr sammen `bok-` + `bad` til ett udelelig ord (`bokbad`) når teksten flyter i Liquid-modus!
+- [x] **Geometrisk orddeling og bindestrek-sammensying (v1.6.0 – v1.6.1):** Gjenkjenner bindestrek (`-` / `=`) ved linjeslutt via streng horisontal pikselgeometri (`inkH <= 24 %` av linjehøyden, `runW >= 1.3 × inkH`, sentrert rundt x-høyden `yCore`), trimmer bort bindestreken og syr sammen `Fyr-` + `direktøren` til ett udelelig ord (`Fyrdirektøren`) i Liquid-modus!
+- [x] **Fase 1.3 – Per-ord Baseline- & Helnings-alignment («De-jagg» når linje $N$ møter linje $N+1$, v1.7.0):**
+  - Beregner hvert ords eget x-høyde-tyngdepunkt og tilpasser en Gaussisk-vektet lokal lineær regresjon (LOESS) langs linjen for å finne ordets lokale grunnlinje `yCoreLocal` og lokale helning `localSlope`.
+  - Klipper ut hvert ord sentrert rundt sin lokale `yCoreLocal` og retter opp ordets helning til $0^\circ$ med rask vertikal skjæring (*vertical shear* med bilineær vertikal interpolasjon) direkte i `extractWordScalarField` (< 0,3 ms per side). Dermed møtes siste ord på linje $N$ og første ord på linje $N+1$ snorrett i CSS Flexbox!
+  - Viser den tilpassede lokale grunnlinjekurven som en stiplet gull-linje i `✂️ Utsnitt & Skjevhet`-inspektøren, og kan skrus av/på under `▸ LAB` (`Lokal grunnlinje & helning (De-jagg)`).
 
-### 🔜 Neste steg (Fase 1.3 & Fase 2)
-1. **Fase 1.3 – Per-ord Baseline- & Helnings-alignment («De-jagg» når linje $N$ møter linje $N+1$):**
-   - *Problem:* Når en bokside er litt på skrå eller krummer inn mot bokryggen, ligger siste ord på linje $N$ lavere/høyere (og med helning $N^\circ$) enn første ord på linje $N+1$ (med helning $M^\circ$). Når disse to ordene havner ved siden av hverandre i Liquid-flyt, oppstår et vertikalt «trappetrinn» (jagged hopp).
-   - *Lettvektsløsning (nesten 0 ekstra CPU):*
-     1. Beregn en glattet **lokal vertikal grunnlinje $y_{\text{core}}(x)$ per ord** langs linjen (via lineær/polynomisk regresjon gjennom ordenes egne tyngdepunkter på linjen), slik at hvert ord klippes ut sentrert rundt sin *lokale* $y_{\text{core}}(x)$ i stedet for hele linjens gjennomsnitt.
-     2. Bruk den lokale helningen $s(x) = \frac{dy_{\text{core}}}{dx}$ til å rette opp ordet med en rask vertikal skjæring (*vertical shear*: $y' = y - (x - x_c) \cdot s(x)$) direkte i `extractWordScalarField` — da møtes siste ord fra linje 1 og første ord fra linje 2 snorrett på samme grunnlinje og med $0^\circ$ helning!
-2. **Fase 1.4 – Typografisk marg-justering (Blokkjustering & Midtstilte overskrifter):**
+### 🔜 Neste steg (Fase 1.4 & Fase 2)
+1. **Fase 1.4 – Typografisk marg-justering (Blokkjustering & Midtstilte overskrifter):**
    - Gruppere ordene per avsnitt i `<div class="liquid-paragraph">` med `display: inline-block` og CSS `text-align: justify; text-align-last: left;` (samt `text-align: center` for korte, symmetriske overskrifter).
 3. **Fase 1.5 – Ytelsesoptimalisering på svært lange sider:**
    - Vurdere `IntersectionObserver` (lazy-rendering av ord-canvases under bretten) dersom sider med > 600 ord (f.eks. store avissider) oppleves tunge på eldre telefoner.

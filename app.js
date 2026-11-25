@@ -48,6 +48,7 @@
   const autoDeskewBtn = document.getElementById("auto-deskew-btn");
   const adaptiveShadowToggle = document.getElementById("adaptive-shadow-toggle");
   const mergeHyphensToggle = document.getElementById("merge-hyphens-toggle");
+  const dejaggBaselineToggle = document.getElementById("dejagg-baseline-toggle");
 
   const zenToggleBtn = document.getElementById("zen-toggle-btn");
   const zenFloatingBar = document.getElementById("zen-floating-bar");
@@ -113,6 +114,7 @@
     paperMedianLum: 220,   // Målt papirluminans (forhindrer at papir-korn tolkes som blekk på tittelsider)
     useAdaptiveShadow: true, // 2D Integral Image lokal skyggefjerning (fjerner bokrygg-skygge / ujevnt lys)
     mergeHyphens: true,    // Limer sammen orddeling ved linjeslutt (bok- + bad -> bokbad) i Liquid-flyt
+    useDejaggBaseline: true, // Lokal grunnlinjekurve y(x) + vertikal shear dy/dx per ord (De-jagg)
     detectedParagraphCount: 0,
     detectedHyphenJoinCount: 0,
     traceMode: "vector",   // 'raw' | 'superres' | 'vector' | 'wireframe'
@@ -126,9 +128,9 @@
     iiifBook: null, // { title, pages: [{ label, serviceId }], currentIndex }
   };
 
-  const APP_VERSION = "1.6.1";
+  const APP_VERSION = "1.7.0";
   const APP_RELEASE_SUMMARY =
-    "Presis bindestreks-geometri: krever nå horisontal strekform (bredere enn høy, <= 24 % av linjehøyden) slik at vanlige sluttbokstaver (e, r, n) og punktum/komma aldri limes til neste linje!";
+    "Lokal grunnlinje- og helnings-alignment (De-jagg): beregner glattet grunnlinjekurve y(x) og vertikal shear dy/dx per ord slik at siste ord på linje N og første ord på linje N+1 møtes snorrett!";
 
   // Hurtigminne (RAM-cache) for ferdig nedlastede IIIF-boksider (URL -> HTMLImageElement)
   const pageImageCache = new Map();
@@ -1428,18 +1430,34 @@
 
       // Normaliser utklippshøyden rundt yCore slik at alle ord i en linje
       // har felles baseline og lik høyde når de flyter fritt i Liquid Mode!
-      const paddedHalfTop = Math.max(
-        Math.round(medianLineHeight * 0.62),
-        Math.round(yCore - absTop + 3)
-      );
-      const paddedHalfBottom = Math.max(
-        Math.round(medianLineHeight * 0.52),
-        Math.round(absBottom - yCore + 3)
-      );
+      const baseHalfTop = Math.round(medianLineHeight * 0.64);
+      const baseHalfBottom = Math.round(medianLineHeight * 0.54);
+      // Hvis linjen har ekstra store fonter (f.eks. tittel/overskrift), legg til
+      // symmetrisk polstring både oppe og nede slik at (paddedHalfTop - paddedHalfBottom)
+      // og dermed grunnlinjens posisjon fra midten av ord-canvaset forblir 100 % konstant!
+      const extraSymmetricPad =
+        bandH > medianLineHeight * 1.25
+          ? Math.max(0, Math.ceil((bandH - medianLineHeight * 1.15) * 0.5))
+          : 0;
+
+      const paddedHalfTop = state.useDejaggBaseline
+        ? baseHalfTop + extraSymmetricPad
+        : Math.max(
+            baseHalfTop,
+            Math.round(yCore - absTop + 3)
+          );
+      const paddedHalfBottom = state.useDejaggBaseline
+        ? baseHalfBottom + extraSymmetricPad
+        : Math.max(
+            baseHalfBottom,
+            Math.round(absBottom - yCore + 3)
+          );
 
       const normTop = Math.max(y0, Math.round(yCore - paddedHalfTop));
       const normBottom = Math.min(y1 - 1, Math.round(yCore + paddedHalfBottom));
-      const normH = Math.max(6, normBottom - normTop + 1);
+      const normH = state.useDejaggBaseline
+        ? Math.max(6, paddedHalfTop + paddedHalfBottom + 1)
+        : Math.max(6, normBottom - normTop + 1);
 
       /**
        * Streng geometrisk deteksjon av ekte bindestrek (- eller =) helt til høyre på en linje:
@@ -1512,6 +1530,55 @@
         const wordRight = Math.min(x1 - 1, x0 + span.right + padX);
         const wordW = Math.max(3, wordRight - wordX + 1);
 
+        // Beregn ordets rå vertikale blekk-tyngdepunkt (x-høyde-kjerne)
+        // ved å finne det tetteste horisontale båndet (ca. 48 % av medianLineHeight)
+        // inne i ordet. Dette hindrer at enkeltstående ascendere (h, l, t) eller
+        // descendere (g, j, p) drar ordets tyngdepunkt opp eller ned.
+        let rawWordYCore = yCore;
+        let wordInkMass = 0;
+        const rowMass = new Float32Array(bandH);
+        for (let r = 0; r < bandH; r++) {
+          const y = absTop + r;
+          const rowOff = y * fullW;
+          let m = 0;
+          for (let x = wordX; x <= wordRight; x++) {
+            const lum = state.gray[rowOff + x];
+            if (lum < inkThreshold) {
+              m += inkThreshold - lum;
+            }
+          }
+          rowMass[r] = m;
+          wordInkMass += m;
+        }
+
+        if (wordInkMass > 0) {
+          const coreWin = Math.max(4, Math.min(bandH, Math.round(medianLineHeight * 0.48)));
+          let bestWinMass = -1;
+          let bestWinStart = 0;
+          let runningMass = 0;
+          for (let r = 0; r < bandH; r++) {
+            runningMass += rowMass[r];
+            if (r >= coreWin) {
+              runningMass -= rowMass[r - coreWin];
+            }
+            if (r >= coreWin - 1 && runningMass > bestWinMass) {
+              bestWinMass = runningMass;
+              bestWinStart = r - (coreWin - 1);
+            }
+          }
+          const winEnd = Math.min(bandH - 1, bestWinStart + coreWin - 1);
+          let weightedY = 0;
+          let coreMass = 0;
+          for (let r = bestWinStart; r <= winEnd; r++) {
+            const wgt = rowMass[r] * rowMass[r];
+            weightedY += (absTop + r) * wgt;
+            coreMass += wgt;
+          }
+          if (coreMass > 0) {
+            rawWordYCore = weightedY / coreMass;
+          }
+        }
+
         const wordObj = {
           id: ++wordCounter,
           lineIndex: lines.length,
@@ -1521,6 +1588,10 @@
           h: normH,
           tightY: absTop,
           tightH: bandH,
+          rawYCore: rawWordYCore,
+          yCoreLocal: yCore,
+          localSlope: 0,
+          inkMass: Math.max(1, wordInkMass),
           spanLeft: span.left,
           spanRight: span.right,
           hasTrailingHyphen: false,
@@ -1530,6 +1601,68 @@
         };
         lineWords.push(wordObj);
         allWords.push(wordObj);
+      }
+
+      // --- LOKAL GRUNNLINJE- & HELNINGS-REGRESJON (DE-JAGG) PER LINJE ---
+      // Tilpasser en Gaussisk-vektet lokal lineær regresjon (LOESS) gjennom ordenes
+      // x-høyde-sentre langs linjen. Dermed følger utklippsboksen både globale skjevheter
+      // og krumning inn mot bokryggen (gutter curve), mens tilfeldig variasjon mellom
+      // ord med/uten descendere ("og" vs "til") glattes helt ut!
+      if (lineWords.length >= 2) {
+        const sigmaX = Math.max(115, roiW * 0.34);
+        const invTwoSigmaSq = 1 / (2 * sigmaX * sigmaX);
+
+        for (let i = 0; i < lineWords.length; i++) {
+          const target = lineWords[i];
+          const tx = target.x + target.w * 0.5;
+
+          let sumW = 0;
+          let sumWX = 0;
+          let sumWY = 0;
+          let sumWXX = 0;
+          let sumWXY = 0;
+
+          for (let j = 0; j < lineWords.length; j++) {
+            const wj = lineWords[j];
+            const xj = wj.x + wj.w * 0.5;
+            const dx = xj - tx;
+            // Vekt etter horisontal Gaussisk nærhet og kvadratroten av ordets blekkmasse
+            const weight =
+              Math.exp(-dx * dx * invTwoSigmaSq) * Math.sqrt(wj.inkMass);
+
+            sumW += weight;
+            sumWX += weight * dx;
+            sumWY += weight * wj.rawYCore;
+            sumWXX += weight * dx * dx;
+            sumWXY += weight * dx * wj.rawYCore;
+          }
+
+          // Svak Tikhonov-regularisering på helningen så korte linjer (2 små ord) ikke overtilpasses
+          const regLambda = sumW * 900;
+          const denom = sumW * (sumWXX + regLambda) - sumWX * sumWX;
+          if (Math.abs(denom) > 1e-5 && sumW > 0) {
+            const intercept =
+              ((sumWXX + regLambda) * sumWY - sumWX * sumWXY) / denom;
+            const slope = (sumW * sumWXY - sumWX * sumWY) / denom;
+            target.yCoreLocal = intercept;
+            // Begrens helning til maks ±0.18 rad (ca. ±10.3 grader)
+            target.localSlope = Math.max(-0.18, Math.min(0.18, slope));
+          } else if (sumW > 0) {
+            target.yCoreLocal = sumWY / sumW;
+            target.localSlope = 0;
+          }
+        }
+      } else if (lineWords.length === 1) {
+        lineWords[0].yCoreLocal = lineWords[0].rawYCore;
+        lineWords[0].localSlope = 0;
+      }
+
+      if (state.useDejaggBaseline) {
+        const maxWordY = Math.max(y0, y1 - normH);
+        for (const wObj of lineWords) {
+          const idealTop = Math.round(wObj.yCoreLocal - paddedHalfTop);
+          wObj.y = Math.max(y0, Math.min(maxWordY, idealTop));
+        }
       }
 
       // Sjekk om siste ord på linjen ender med en frittstående bindestrek (to tilfeller):
@@ -1760,6 +1893,33 @@
         overlayCtx.strokeRect(word.x, word.tightY, word.w, word.tightH);
       }
     }
+
+    // Tegn den tilpassede lokale grunnlinjekurven (De-jagg) tvers over hver linje
+    if (showBoxesToggle.checked && state.useDejaggBaseline && state.detectedLines) {
+      overlayCtx.strokeStyle = "rgba(217, 119, 6, 0.72)";
+      overlayCtx.lineWidth = 1.5;
+      overlayCtx.setLineDash([4, 3]);
+      for (const line of state.detectedLines) {
+        if (!line.words || line.words.length === 0) continue;
+        overlayCtx.beginPath();
+        for (let i = 0; i < line.words.length; i++) {
+          const lw = line.words[i];
+          const cx = lw.x + lw.w * 0.5;
+          const cy = lw.yCoreLocal ?? line.yCore;
+          if (i === 0) {
+            overlayCtx.moveTo(lw.x, cy - (lw.w * 0.5) * (lw.localSlope || 0));
+            overlayCtx.lineTo(cx, cy);
+          } else {
+            overlayCtx.lineTo(cx, cy);
+          }
+          if (i === line.words.length - 1) {
+            overlayCtx.lineTo(lw.x + lw.w, cy + (lw.w * 0.5) * (lw.localSlope || 0));
+          }
+        }
+        overlayCtx.stroke();
+      }
+      overlayCtx.setLineDash([]);
+    }
     overlayCtx.restore();
   }
 
@@ -1769,21 +1929,47 @@
 
   /**
    * Henter en myknet (eller rå) gråtone-matrise (Float32Array) for et enkelt ord,
-   * med 1px lys polstring langs kanten slik at alle Marching Squares-konturer
-   * lukker seg pent rundt bokstaver som berører ordets ytterkant.
+   * inkludert vertikal skjæring (vertical shear / De-jagg) basert på ordets lokale
+   * helning langs linjen slik at skjeve/krumme ord rettes opp til 0 grader.
    */
   function extractWordScalarField(word, preblurRadius) {
     const fullW = sourceCanvas.width;
+    const fullH = sourceCanvas.height;
     const gray = state.gray;
     const w = word.w;
     const h = word.h;
 
     const raw = new Float32Array(w * h);
-    for (let r = 0; r < h; r++) {
-      const srcRow = (word.y + r) * fullW + word.x;
-      const dstRow = r * w;
+    const slope = state.useDejaggBaseline ? (word.localSlope || 0) : 0;
+
+    if (Math.abs(slope) > 0.002) {
+      const midC = (w - 1) * 0.5;
+      const paperFallback = state.paperMedianLum || 235;
       for (let c = 0; c < w; c++) {
-        raw[dstRow + c] = gray[srcRow + c];
+        const absX = word.x + c;
+        const dy = (c - midC) * slope;
+        for (let r = 0; r < h; r++) {
+          const sy = word.y + r + dy;
+          const yFloor = Math.floor(sy);
+          const ty = sy - yFloor;
+          if (yFloor >= 0 && yFloor + 1 < fullH) {
+            const v0 = gray[yFloor * fullW + absX];
+            const v1 = gray[(yFloor + 1) * fullW + absX];
+            raw[r * w + c] = v0 + (v1 - v0) * ty;
+          } else if (yFloor >= 0 && yFloor < fullH) {
+            raw[r * w + c] = gray[yFloor * fullW + absX];
+          } else {
+            raw[r * w + c] = paperFallback;
+          }
+        }
+      }
+    } else {
+      for (let r = 0; r < h; r++) {
+        const srcRow = (word.y + r) * fullW + word.x;
+        const dstRow = r * w;
+        for (let c = 0; c < w; c++) {
+          raw[dstRow + c] = gray[srcRow + c];
+        }
       }
     }
 
@@ -2083,17 +2269,39 @@
     if (mode === "paper" && tMode !== "wireframe" && !overrideTraceMode) {
       wCanvas.width = word.w;
       wCanvas.height = word.h;
-      wCtx.drawImage(
-        sourceCanvas,
-        word.x,
-        word.y,
-        word.w,
-        word.h,
-        0,
-        0,
-        word.w,
-        word.h
-      );
+      const slope = state.useDejaggBaseline ? (word.localSlope || 0) : 0;
+      if (Math.abs(slope) > 0.003) {
+        const midC = (word.w - 1) * 0.5;
+        wCtx.fillStyle = state.sampledPaperHex || "#f8f4e8";
+        wCtx.fillRect(0, 0, word.w, word.h);
+        for (let c = 0; c < word.w; c += 2) {
+          const sliceW = Math.min(2, word.w - c);
+          const dy = ((c + sliceW * 0.5) - midC) * slope;
+          wCtx.drawImage(
+            sourceCanvas,
+            word.x + c,
+            word.y + dy,
+            sliceW,
+            word.h,
+            c,
+            0,
+            sliceW,
+            word.h
+          );
+        }
+      } else {
+        wCtx.drawImage(
+          sourceCanvas,
+          word.x,
+          word.y,
+          word.w,
+          word.h,
+          0,
+          0,
+          word.w,
+          word.h
+        );
+      }
       return;
     }
 
@@ -2746,6 +2954,13 @@
   if (mergeHyphensToggle) {
     mergeHyphensToggle.addEventListener("change", () => {
       state.mergeHyphens = mergeHyphensToggle.checked;
+      runSegmentationAndRender();
+    });
+  }
+
+  if (dejaggBaselineToggle) {
+    dejaggBaselineToggle.addEventListener("change", () => {
+      state.useDejaggBaseline = dejaggBaselineToggle.checked;
       runSegmentationAndRender();
     });
   }

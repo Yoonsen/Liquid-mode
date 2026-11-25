@@ -8,7 +8,7 @@
   <title>Pixel-Liquid Mode — Bibliotek &amp; Leseflate uten OCR</title>
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
   <link rel="apple-touch-icon" href="favicon.svg" />
-  <link rel="stylesheet" href="styles.css?v=15" />
+  <link rel="stylesheet" href="styles.css?v=16" />
 </head>
 <body data-app-screen="library">
   <!-- OPPDATERINGSVARSEL (varsler når ny versjon er rullet ut på GitHub Pages) -->
@@ -36,7 +36,7 @@
         <div>
           <div class="title-with-version">
             <h1>Pixel-Liquid Mode</h1>
-            <span id="app-version-badge" class="version-pill" title="Installert versjon">v1.6.1</span>
+            <span id="app-version-badge" class="version-pill" title="Installert versjon">v1.7.0</span>
           </div>
           <p class="subtitle">Universell leseflyt på pikselnivå — helt uten OCR</p>
         </div>
@@ -377,6 +377,11 @@
               <span>Lim sammen orddeling (bok- + bad)</span>
             </label>
 
+            <label class="checkbox-label" for="dejagg-baseline-toggle" title="Beregner lokal grunnlinjekurve y(x) og helning dy/dx langs hver linje slik at siste ord på linje N og første ord på linje N+1 møtes snorrett uten høydehopp">
+              <input type="checkbox" id="dejagg-baseline-toggle" checked />
+              <span>Lokal grunnlinje &amp; helning (De-jagg)</span>
+            </label>
+
             <label class="checkbox-label" for="toggle-loupe">
               <input type="checkbox" id="toggle-loupe" checked />
               <span>Vis ord-lupe</span>
@@ -477,6 +482,6 @@
     <button type="button" id="zen-split-btn" hidden></button>
   </div>
 
-  <script src="app.js?v=15" defer></script>
+  <script src="app.js?v=16" defer></script>
 </body>
 </html>
