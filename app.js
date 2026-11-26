@@ -128,9 +128,9 @@
     iiifBook: null, // { title, pages: [{ label, serviceId }], currentIndex }
   };
 
-  const APP_VERSION = "1.7.1";
+  const APP_VERSION = "1.7.2";
   const APP_RELEASE_SUMMARY =
-    "2D-komponent bindestrek-deteksjon og linjedeling: finner nå også tett kernede bindestreker (ty-, frede-, gevæ-, mang-) der bokstavseriffer henger over bindestreken, skiller linjer der ascendere/descendere berører hverandre, og støtter ?page= i NB.no-lenker!";
+    "Bevarer hele ord ved tett skannekant og bindestrek: starter aldri utsnittet 1,4 % inne i teksten (slik at venstre del av ord nær margen som 'drene.', 'datter?' og 'to' aldri kuttes), og gir +2 px luft til siste bokstav før bindestreken!";
 
   // Hurtigminne (RAM-cache) for ferdig nedlastede IIIF-boksider (URL -> HTMLImageElement)
   const pageImageCache = new Map();
@@ -1314,52 +1314,75 @@
         Math.min(fullH, Math.round(state.cropRect.y + state.cropRect.h))
       );
     } else {
-      // Skrell automatisk bort de ytterste ~1.4 % skannekantene (og eventuelle mørke
-      // vertikale/horisontale skannerstriper helt i ytterkant) slik at en mørk
-      // skannerkant langs venstre eller høyre marg ikke smelter sammen tekstlinjene!
-      x0 = Math.min(fullW - 2, Math.round(fullW * 0.014));
-      x1 = Math.max(x0 + 1, Math.round(fullW * 0.986));
-      y0 = Math.min(fullH - 2, Math.round(fullH * 0.01));
-      y1 = Math.max(y0 + 1, Math.round(fullH * 0.99));
+      // Start helt ute ved 0 (så tett beskårne NB-sider der teksten starter 8 px fra kanten
+      // aldri mister første bokstav!), og skrell KUN bort kontinuerlige vertikale/horisontale
+      // skannerstriper (> 28 % mørke piksler gjennom hele sidens høyde/bredde) innenfor de ytterste 1,2 %.
+      x0 = 0;
+      x1 = fullW;
+      y0 = 0;
+      y1 = fullH;
 
-      const maxPeelX = Math.round(fullW * 0.09);
-      const maxPeelY = Math.round(fullH * 0.07);
-      const sampleRows = Math.max(1, Math.floor((y1 - y0) / 2));
+      const maxBorderScanX = Math.min(14, Math.round(fullW * 0.013));
+      const maxBorderScanY = Math.min(14, Math.round(fullH * 0.01));
+      const sampleRows = Math.max(1, Math.floor(fullH / 2));
 
-      while (x0 < maxPeelX) {
+      let lastLeftStripe = -1;
+      for (let c = 0; c < maxBorderScanX; c++) {
         let dark = 0;
-        for (let y = y0; y < y1; y += 2) {
-          if (state.gray[y * fullW + x0] < inkThreshold) dark++;
+        for (let y = 0; y < fullH; y += 2) {
+          if (state.gray[y * fullW + c] < inkThreshold) dark++;
         }
-        if (dark / sampleRows > 0.18) x0 += 2;
-        else break;
+        if (dark / sampleRows > 0.28) {
+          lastLeftStripe = c;
+        }
       }
-      while (x1 > fullW - maxPeelX) {
+      if (lastLeftStripe >= 0) {
+        x0 = Math.min(fullW - 2, lastLeftStripe + 2);
+      }
+
+      let lastRightStripe = fullW;
+      for (let c = fullW - 1; c >= fullW - maxBorderScanX; c--) {
         let dark = 0;
-        for (let y = y0; y < y1; y += 2) {
-          if (state.gray[y * fullW + (x1 - 1)] < inkThreshold) dark++;
+        for (let y = 0; y < fullH; y += 2) {
+          if (state.gray[y * fullW + c] < inkThreshold) dark++;
         }
-        if (dark / sampleRows > 0.18) x1 -= 2;
-        else break;
+        if (dark / sampleRows > 0.28) {
+          lastRightStripe = c;
+        }
       }
+      if (lastRightStripe < fullW) {
+        x1 = Math.max(x0 + 1, lastRightStripe - 1);
+      }
+
       const sampleCols = Math.max(1, Math.floor((x1 - x0) / 2));
-      while (y0 < maxPeelY) {
+      let lastTopStripe = -1;
+      for (let r = 0; r < maxBorderScanY; r++) {
         let dark = 0;
-        const ro = y0 * fullW;
+        const ro = r * fullW;
         for (let x = x0; x < x1; x += 2) {
           if (state.gray[ro + x] < inkThreshold) dark++;
         }
-        if (dark / sampleCols > 0.18) y0 += 2;
-        else break;
+        if (dark / sampleCols > 0.28) {
+          lastTopStripe = r;
+        }
       }
-      while (y1 > fullH - maxPeelY) {
+      if (lastTopStripe >= 0) {
+        y0 = Math.min(fullH - 2, lastTopStripe + 2);
+      }
+
+      let lastBotStripe = fullH;
+      for (let r = fullH - 1; r >= fullH - maxBorderScanY; r--) {
         let dark = 0;
-        const ro = (y1 - 1) * fullW;
+        const ro = r * fullW;
         for (let x = x0; x < x1; x += 2) {
           if (state.gray[ro + x] < inkThreshold) dark++;
         }
-        if (dark / sampleCols > 0.18) y1 -= 2;
-        else break;
+        if (dark / sampleCols > 0.28) {
+          lastBotStripe = r;
+        }
+      }
+      if (lastBotStripe < fullH) {
+        y1 = Math.max(y0 + 1, lastBotStripe - 1);
       }
     }
 
@@ -1367,11 +1390,16 @@
     const roiH = Math.max(1, y1 - y0);
 
     // --- STEG A: Horisontal projeksjon (antall blekkpiksler per rad) ---
+    // For selve linjedeteksjonen (rowCounts) måler vi de indre 92 % av bredden dersom
+    // brukeren ikke har valgt manuelt utsnitt, slik at eventuelle skygger/stempler
+    // helt ute i margen aldri kan koble sammen to linjer!
+    const projX0 = state.cropRect ? x0 : Math.max(x0, Math.round(fullW * 0.035));
+    const projX1 = state.cropRect ? x1 : Math.min(x1, Math.round(fullW * 0.965));
     const rowCounts = new Float32Array(roiH);
     for (let r = 0; r < roiH; r++) {
       const rowOffset = (y0 + r) * fullW;
       let ink = 0;
-      for (let c = x0; c < x1; c++) {
+      for (let c = projX0; c < projX1; c++) {
         if (state.gray[rowOffset + c] < inkThreshold) {
           ink++;
         }
@@ -1955,6 +1983,12 @@
             lastWord.x + lastWord.w - penultimateWord.x
           );
           penultimateWord.hasTrailingHyphen = true;
+          penultimateWord.hyphenBox = {
+            x0: x0 + lastRun.left - 1,
+            x1: x0 + lastRun.right + 1,
+            y0: absTop,
+            y1: absBottom,
+          };
           lineWords.pop();
           allWords.pop();
         } else if (
@@ -1962,15 +1996,23 @@
           prevRun.left >= lastWord.spanLeft &&
           checkHyphenGeometry(lastRun.left, lastRun.right)
         ) {
-          // Tilfelle B: Bindestreken er siste frittstående charRun inne i siste ord
-          const trimmedRight = Math.min(x1 - 1, x0 + prevRun.right + 1);
+          // Tilfelle B: Bindestreken er siste frittstående charRun inne i siste ord.
+          // Gi siste bokstav full +padX (2 px) polstring slik at konturen ved +9 blekkfylde
+          // aldri kuttes i kanten, og masker selve bindestrek-boksen til papirfarge!
+          const trimmedRight = Math.min(x1 - 1, x0 + prevRun.right + padX);
           lastWord.hasTrailingHyphen = true;
           lastWord.wWithoutHyphen = Math.max(4, trimmedRight - lastWord.x + 1);
+          lastWord.hyphenBox = {
+            x0: x0 + lastRun.left - 1,
+            x1: x0 + lastRun.right + 1,
+            y0: absTop,
+            y1: absBottom,
+          };
         } else {
           // Tilfelle C: 2D sammenhengende komponent helt til høyre i siste ord (tett kernet under/over seriff/løkke)
           const comp = findRightmost2DHyphen(lastWord.spanLeft, lastWord.spanRight);
           if (comp) {
-            const trimmedRight = Math.min(x1 - 1, x0 + comp.maxLetterC + 1);
+            const trimmedRight = Math.min(x1 - 1, x0 + comp.maxLetterC + padX);
             lastWord.hasTrailingHyphen = true;
             lastWord.wWithoutHyphen = Math.max(4, trimmedRight - lastWord.x + 1);
             lastWord.hyphenBox = {

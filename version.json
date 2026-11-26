@@ -1,5 +1,5 @@
 {
-  "version": "1.7.1",
-  "updatedAt": "2026-11-26T09:33:00+01:00",
-  "summary": "2D-komponent bindestrek-deteksjon og linjedeling: finner nå også tett kernede bindestreker (ty-, frede-, gevæ-, mang-) der bokstavseriffer henger over bindestreken, skiller linjer der ascendere/descendere berører hverandre, og støtter ?page= i NB.no-lenker!"
+  "version": "1.7.2",
+  "updatedAt": "2026-11-26T18:48:00+01:00",
+  "summary": "Bevarer hele ord ved tett skannekant og bindestrek: starter aldri utsnittet 1,4 % inne i teksten (slik at venstre del av ord nær margen som 'drene.', 'datter?' og 'to' aldri kuttes), og gir +2 px luft til siste bokstav før bindestreken!"
 }
