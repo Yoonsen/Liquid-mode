@@ -1,5 +1,5 @@
 {
-  "version": "1.7.0",
-  "updatedAt": "2026-11-25T14:35:00+01:00",
-  "summary": "Lokal grunnlinje- og helnings-oppretting (De-jagg): hvert ord klippes og rettes opp etter sin lokale posisjon og helning langs linjen, slik at siste ord på en skjev/krum linje møter første ord på neste linje snorrett!"
+  "version": "1.7.1",
+  "updatedAt": "2026-11-26T09:33:00+01:00",
+  "summary": "2D-komponent bindestrek-deteksjon og linjedeling: finner nå også tett kernede bindestreker (ty-, frede-, gevæ-, mang-) der bokstavseriffer henger over bindestreken, skiller linjer der ascendere/descendere berører hverandre, og støtter ?page= i NB.no-lenker!"
 }

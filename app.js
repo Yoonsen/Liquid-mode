@@ -128,9 +128,9 @@
     iiifBook: null, // { title, pages: [{ label, serviceId }], currentIndex }
   };
 
-  const APP_VERSION = "1.7.0";
+  const APP_VERSION = "1.7.1";
   const APP_RELEASE_SUMMARY =
-    "Lokal grunnlinje- og helnings-alignment (De-jagg): beregner glattet grunnlinjekurve y(x) og vertikal shear dy/dx per ord slik at siste ord på linje N og første ord på linje N+1 møtes snorrett!";
+    "2D-komponent bindestrek-deteksjon og linjedeling: finner nå også tett kernede bindestreker (ty-, frede-, gevæ-, mang-) der bokstavseriffer henger over bindestreken, skiller linjer der ascendere/descendere berører hverandre, og støtter ?page= i NB.no-lenker!";
 
   // Hurtigminne (RAM-cache) for ferdig nedlastede IIIF-boksider (URL -> HTMLImageElement)
   const pageImageCache = new Map();
@@ -524,6 +524,14 @@
     const trimmed = rawInput.trim();
     if (!trimmed) return;
 
+    // Dersom URL-en har ?page=11 (1-basert sidetall fra NB.no-viseren), bruk page - 1 som startside
+    if (initialPageIndex === null) {
+      const pageParamMatch = trimmed.match(/[?&]page=([0-9]+)/i);
+      if (pageParamMatch) {
+        initialPageIndex = Math.max(0, Number(pageParamMatch[1]) - 1);
+      }
+    }
+
     // 1. Sjekk om input inneholder en URN (f.eks. https://urn.nb.no/URN:NBN:no-nb_digibok_2015051929001)
     const urnMatch = trimmed.match(/(URN:NBN:no-nb_[A-Za-z0-9_-]+)/i);
     if (urnMatch && !trimmed.includes("/services/image/resolver/")) {
@@ -572,21 +580,35 @@
   async function loadNbBookByQuery(queryId, preferredPageIndex = null, pageSuffix = null) {
     try {
       statsBar.innerHTML = `<span class="stat-chip">Spør Nasjonalbibliotekets API om tilgang og IIIF-manifest...</span>`;
-      const catalogUrl = `https://api.nb.no/catalog/v1/items?q=${encodeURIComponent(queryId)}&size=5`;
-      const resp = await fetch(catalogUrl);
-      if (!resp.ok) {
-        throw new Error(`NB katalog-API svarte med HTTP ${resp.status}`);
-      }
-      const data = await resp.json();
-      const items = data?._embedded?.items || [];
+      let item = null;
 
-      // Finn eksakt treff på URN eller ID, eller bruk første treff
-      const item =
-        items.find(
-          (it) =>
-            it?.metadata?.identifiers?.urn?.toLowerCase() === queryId.toLowerCase() ||
-            it?.id?.toLowerCase() === queryId.toLowerCase()
-        ) || items[0];
+      // Ved 32-tegns NB-katalog-ID: slå opp direkte på /catalog/v1/items/<id> først
+      if (/^[a-f0-9]{32}$/i.test(queryId)) {
+        const directResp = await fetch(
+          `https://api.nb.no/catalog/v1/items/${encodeURIComponent(queryId)}`
+        );
+        if (directResp.ok) {
+          item = await directResp.json();
+        }
+      }
+
+      if (!item) {
+        const catalogUrl = `https://api.nb.no/catalog/v1/items?q=${encodeURIComponent(queryId)}&size=5`;
+        const resp = await fetch(catalogUrl);
+        if (!resp.ok) {
+          throw new Error(`NB katalog-API svarte med HTTP ${resp.status}`);
+        }
+        const data = await resp.json();
+        const items = data?._embedded?.items || [];
+
+        // Finn eksakt treff på URN eller ID, eller bruk første treff
+        item =
+          items.find(
+            (it) =>
+              it?.metadata?.identifiers?.urn?.toLowerCase() === queryId.toLowerCase() ||
+              it?.id?.toLowerCase() === queryId.toLowerCase()
+          ) || items[0];
+      }
 
       if (!item) {
         statsBar.innerHTML = `
@@ -1269,19 +1291,80 @@
     const fullW = sourceCanvas.width;
     const fullH = sourceCanvas.height;
 
-    const roi = state.cropRect || { x: 0, y: 0, w: fullW, h: fullH };
-    const x0 = Math.max(0, Math.min(fullW - 1, Math.round(roi.x)));
-    const y0 = Math.max(0, Math.min(fullH - 1, Math.round(roi.y)));
-    const x1 = Math.max(x0 + 1, Math.min(fullW, Math.round(roi.x + roi.w)));
-    const y1 = Math.max(y0 + 1, Math.min(fullH, Math.round(roi.y + roi.h)));
-    const roiW = x1 - x0;
-    const roiH = y1 - y0;
-
     // Effektiv blekk-terskel (piksler mørkere enn denne verdien regnes som blekk)
     const inkThreshold = Math.max(
       25,
       Math.min(235, state.otsuThreshold + state.contrastOffset)
     );
+
+    let x0;
+    let y0;
+    let x1;
+    let y1;
+
+    if (state.cropRect) {
+      x0 = Math.max(0, Math.min(fullW - 1, Math.round(state.cropRect.x)));
+      y0 = Math.max(0, Math.min(fullH - 1, Math.round(state.cropRect.y)));
+      x1 = Math.max(
+        x0 + 1,
+        Math.min(fullW, Math.round(state.cropRect.x + state.cropRect.w))
+      );
+      y1 = Math.max(
+        y0 + 1,
+        Math.min(fullH, Math.round(state.cropRect.y + state.cropRect.h))
+      );
+    } else {
+      // Skrell automatisk bort de ytterste ~1.4 % skannekantene (og eventuelle mørke
+      // vertikale/horisontale skannerstriper helt i ytterkant) slik at en mørk
+      // skannerkant langs venstre eller høyre marg ikke smelter sammen tekstlinjene!
+      x0 = Math.min(fullW - 2, Math.round(fullW * 0.014));
+      x1 = Math.max(x0 + 1, Math.round(fullW * 0.986));
+      y0 = Math.min(fullH - 2, Math.round(fullH * 0.01));
+      y1 = Math.max(y0 + 1, Math.round(fullH * 0.99));
+
+      const maxPeelX = Math.round(fullW * 0.09);
+      const maxPeelY = Math.round(fullH * 0.07);
+      const sampleRows = Math.max(1, Math.floor((y1 - y0) / 2));
+
+      while (x0 < maxPeelX) {
+        let dark = 0;
+        for (let y = y0; y < y1; y += 2) {
+          if (state.gray[y * fullW + x0] < inkThreshold) dark++;
+        }
+        if (dark / sampleRows > 0.18) x0 += 2;
+        else break;
+      }
+      while (x1 > fullW - maxPeelX) {
+        let dark = 0;
+        for (let y = y0; y < y1; y += 2) {
+          if (state.gray[y * fullW + (x1 - 1)] < inkThreshold) dark++;
+        }
+        if (dark / sampleRows > 0.18) x1 -= 2;
+        else break;
+      }
+      const sampleCols = Math.max(1, Math.floor((x1 - x0) / 2));
+      while (y0 < maxPeelY) {
+        let dark = 0;
+        const ro = y0 * fullW;
+        for (let x = x0; x < x1; x += 2) {
+          if (state.gray[ro + x] < inkThreshold) dark++;
+        }
+        if (dark / sampleCols > 0.18) y0 += 2;
+        else break;
+      }
+      while (y1 > fullH - maxPeelY) {
+        let dark = 0;
+        const ro = (y1 - 1) * fullW;
+        for (let x = x0; x < x1; x += 2) {
+          if (state.gray[ro + x] < inkThreshold) dark++;
+        }
+        if (dark / sampleCols > 0.18) y1 -= 2;
+        else break;
+      }
+    }
+
+    const roiW = Math.max(1, x1 - x0);
+    const roiH = Math.max(1, y1 - y0);
 
     // --- STEG A: Horisontal projeksjon (antall blekkpiksler per rad) ---
     const rowCounts = new Float32Array(roiH);
@@ -1324,25 +1407,82 @@
       rawLineBands.push({ top: bandStart, bottom: roiH - 1 });
     }
 
-    // Slå sammen bånd som kun er separert av 1-2 pikslers hull (f.eks. prikk over i/å)
+    // Slå kun sammen bånd over <= 2 pikslers hull dersom minst ett av båndene er et
+    // tynt diakritisk fragment (<= 8 px, f.eks. prikk over i/å). To fullhøyde tekstlinjer
+    // skal ALDRI slås sammen bare fordi en descender kom nær en ascender på linjen under!
     const mergedBands = [];
     for (const band of rawLineBands) {
-      if (
-        mergedBands.length > 0 &&
-        band.top - mergedBands[mergedBands.length - 1].bottom <= 2
-      ) {
-        mergedBands[mergedBands.length - 1].bottom = band.bottom;
-      } else {
-        mergedBands.push({ ...band });
+      if (mergedBands.length > 0) {
+        const prev = mergedBands[mergedBands.length - 1];
+        const prevH = prev.bottom - prev.top + 1;
+        const currH = band.bottom - band.top + 1;
+        if (band.top - prev.bottom <= 2 && Math.min(prevH, currH) <= 8) {
+          prev.bottom = band.bottom;
+          continue;
+        }
       }
+      mergedBands.push({ ...band });
     }
 
     // Filtrer bort støy-linjer (< 6px) og ekstremt høye bånd (> 260px, f.eks. helsides ramme/illustrasjon)
     const maxAllowedBandH = Math.max(180, Math.round(roiH * 0.22));
-    const validBands = mergedBands.filter((b) => {
+    const preValidBands = mergedBands.filter((b) => {
       const bh = b.bottom - b.top + 1;
       return bh >= 6 && bh <= maxAllowedBandH;
     });
+
+    // Estimer typisk enkeltlinje-høyde (35-persentil av bånd >= 12 px) og splitt
+    // eventuelle sammensmeltede dobbelt-/trippellinjer (bh >= refSingleH * 1.65) i bølgedalen!
+    const tallHeights = preValidBands
+      .map((b) => b.bottom - b.top + 1)
+      .filter((h) => h >= 12)
+      .sort((a, b) => a - b);
+    const refSingleH =
+      tallHeights.length > 0
+        ? tallHeights[Math.floor(tallHeights.length * 0.35)]
+        : 28;
+
+    function splitMultiLineBand(top, bottom) {
+      const bh = bottom - top + 1;
+      if (bh < refSingleH * 1.65) {
+        return [{ top, bottom }];
+      }
+      const margin = Math.max(10, Math.round(refSingleH * 0.55));
+      if (top + margin >= bottom - margin) {
+        return [{ top, bottom }];
+      }
+      let minVal = Infinity;
+      let minR = -1;
+      for (let r = top + margin; r <= bottom - margin; r++) {
+        if (smoothRows[r] < minVal) {
+          minVal = smoothRows[r];
+          minR = r;
+        }
+      }
+      if (minR <= top || minR >= bottom) {
+        return [{ top, bottom }];
+      }
+      let peakTop = 0;
+      for (let r = top; r < minR; r++) {
+        if (smoothRows[r] > peakTop) peakTop = smoothRows[r];
+      }
+      let peakBot = 0;
+      for (let r = minR + 1; r <= bottom; r++) {
+        if (smoothRows[r] > peakBot) peakBot = smoothRows[r];
+      }
+      if (minVal <= Math.min(peakTop, peakBot) * 0.45) {
+        return [
+          ...splitMultiLineBand(top, minR - 1),
+          ...splitMultiLineBand(minR + 1, bottom),
+        ];
+      }
+      return [{ top, bottom }];
+    }
+
+    const validBands = [];
+    for (const b of preValidBands) {
+      validBands.push(...splitMultiLineBand(b.top, b.bottom));
+    }
 
     // Beregn median linjehøyde og median linjeavstand (for å oppdage avsnittsskift!)
     const heights = validBands.map((b) => b.bottom - b.top + 1);
@@ -1503,16 +1643,141 @@
           inkH <= Math.max(7, Math.round(bandH * 0.24)) &&
           runW >= inkH * 1.3;
         const isCenteredOnXHeight =
-          midY >= yCore - bandH * 0.16 && midY <= yCore + bandH * 0.11;
+          midY >= yCore - bandH * 0.16 && midY <= yCore + bandH * 0.22;
         const clearsTopAndBottom =
-          minInkY >= absTop + Math.max(3, Math.floor(bandH * 0.22)) &&
-          maxInkY <= absBottom - Math.max(3, Math.floor(bandH * 0.20));
+          minInkY >= absTop + Math.max(3, Math.floor(bandH * 0.20)) &&
+          maxInkY <= absBottom - Math.max(3, Math.floor(bandH * 0.16));
 
         return (
           isThinHorizontalStroke &&
           isCenteredOnXHeight &&
           clearsTopAndBottom
         );
+      }
+
+      /**
+       * 2D sammenhengende-komponent-søk (4-connected BFS) for bindestrek helt til høyre i et ord.
+       * Løser tilfeller i tett kernet antikva-sats (f.eks. "ty-", "frede-", "gevæ-", "mang-")
+       * der øret på 'g', seriffen på 'y' eller tverrstreken i 'e' stikker 1–2 px ut over/under
+       * venstre spiss av bindestreken, slik at 1D vertikal projeksjon (colCounts) ikke ser
+       * noen 100 % tom kolonne mellom bokstaven og bindestreken – mens bindestreken i 2D
+       * er en helt frittstående, tynn horisontal øy!
+       */
+      function findRightmost2DHyphen(wordLeftCol, wordRightCol) {
+        const maxDashW = Math.max(18, Math.round(bandH * 0.52));
+        const maxDashH = Math.max(7, Math.round(bandH * 0.24));
+        const yMinZone = Math.max(absTop, Math.round(yCore - bandH * 0.22));
+        const yMaxZone = Math.min(absBottom, Math.round(yCore + bandH * 0.26));
+
+        const seedPixels = [];
+        for (const sc of [wordRightCol, wordRightCol - 1]) {
+          if (sc < wordLeftCol) continue;
+          const absX = x0 + sc;
+          for (let y = yMinZone; y <= yMaxZone; y++) {
+            if (state.gray[y * fullW + absX] < inkThreshold) {
+              seedPixels.push({ c: sc, y });
+            }
+          }
+          if (seedPixels.length > 0) break;
+        }
+        if (seedPixels.length === 0) return null;
+
+        const spanW = wordRightCol - wordLeftCol + 1;
+        const visited = new Uint8Array(spanW * bandH);
+        const queue = [];
+
+        for (const sp of seedPixels) {
+          const idx = (sp.y - absTop) * spanW + (sp.c - wordLeftCol);
+          visited[idx] = 1;
+          queue.push(sp);
+        }
+
+        let minC = wordRightCol;
+        let maxC = wordLeftCol;
+        let minY = absBottom;
+        let maxY = absTop;
+        let head = 0;
+
+        while (head < queue.length) {
+          const curr = queue[head++];
+          if (curr.c < minC) minC = curr.c;
+          if (curr.c > maxC) maxC = curr.c;
+          if (curr.y < minY) minY = curr.y;
+          if (curr.y > maxY) maxY = curr.y;
+
+          // Avbryt umiddelbart dersom komponenten vokser seg større enn en bindestrek
+          if (maxC - minC + 1 > maxDashW || maxY - minY + 1 > maxDashH) {
+            return null;
+          }
+
+          const neighbors = [
+            { c: curr.c + 1, y: curr.y },
+            { c: curr.c - 1, y: curr.y },
+            { c: curr.c, y: curr.y + 1 },
+            { c: curr.c, y: curr.y - 1 },
+          ];
+          for (const nb of neighbors) {
+            if (
+              nb.c < wordLeftCol ||
+              nb.c > wordRightCol ||
+              nb.y < absTop ||
+              nb.y > absBottom
+            ) {
+              continue;
+            }
+            const nIdx = (nb.y - absTop) * spanW + (nb.c - wordLeftCol);
+            if (!visited[nIdx] && state.gray[nb.y * fullW + (x0 + nb.c)] < inkThreshold) {
+              visited[nIdx] = 1;
+              queue.push(nb);
+            }
+          }
+        }
+
+        const compW = maxC - minC + 1;
+        const compH = maxY - minY + 1;
+        const midY = (minY + maxY) * 0.5;
+
+        // Må ha minst én bokstav til venstre for bindestreken inne i samme ord
+        if (minC <= wordLeftCol + 3) return null;
+        if (compW < 4 || compH > maxDashH || compW < compH * 1.35) return null;
+        if (midY < yCore - bandH * 0.16 || midY > yCore + bandH * 0.22) return null;
+        if (
+          minY < absTop + Math.max(3, Math.floor(bandH * 0.20)) ||
+          maxY > absBottom - Math.max(3, Math.floor(bandH * 0.16))
+        ) {
+          return null;
+        }
+
+        // Finn høyre ytterkant (maxLetterC) av selve bokstavblekket i ordet (alle blekkpiksler som IKKE tilhører bindestrek-komponenten)
+        let maxLetterC = wordLeftCol;
+        for (let c = maxC; c >= wordLeftCol; c--) {
+          const absX = x0 + c;
+          let hasNonHyphenInk = false;
+          for (let y = absTop; y <= absBottom; y++) {
+            const nIdx = (y - absTop) * spanW + (c - wordLeftCol);
+            if (!visited[nIdx] && state.gray[y * fullW + absX] < inkThreshold) {
+              hasNonHyphenInk = true;
+              break;
+            }
+          }
+          if (hasNonHyphenInk) {
+            maxLetterC = c;
+            break;
+          }
+        }
+
+        // Sikre at avstanden mellom siste bokstav og bindestreken ikke er et helt ordmellomrom (tankestrek)
+        if (minC - maxLetterC - 1 > Math.max(5, baseSpaceThreshold * 0.9)) {
+          return null;
+        }
+
+        return {
+          minC,
+          maxC,
+          minY,
+          maxY,
+          maxLetterC,
+        };
       }
 
       const padX = 2;
@@ -1665,22 +1930,24 @@
         }
       }
 
-      // Sjekk om siste ord på linjen ender med en frittstående bindestrek (to tilfeller):
+      // Sjekk om siste ord på linjen ender med en frittstående bindestrek (tre tilfeller):
       // A) Bindestreken ble skilt ut som en egen liten "wordSpan" helt til høyre
       // B) Bindestreken er siste frittstående "charRun" inne i siste ord
-      // (Vi kutter aldri inne i et sammenhengende bokstavsegment!)
-      if (lineWords.length >= 1 && charRuns.length >= 2) {
+      // C) Bindestreken er en frittstående 2D-komponent helt til høyre i siste ord (f.eks. "ty-", "frede-", "gevæ-", "mang-")
+      if (lineWords.length >= 1 && charRuns.length >= 1) {
         const lastRun = charRuns[charRuns.length - 1];
-        const prevRun = charRuns[charRuns.length - 2];
+        const prevRun = charRuns.length >= 2 ? charRuns[charRuns.length - 2] : null;
         const lastWord = lineWords[lineWords.length - 1];
 
         if (
           lineWords.length >= 2 &&
+          prevRun &&
           lastWord.spanLeft === lastRun.left &&
           lastWord.spanRight === lastRun.right &&
+          lastRun.left - prevRun.right - 1 <= Math.max(6, baseSpaceThreshold * 1.35) &&
           checkHyphenGeometry(lastRun.left, lastRun.right)
         ) {
-          // Tilfelle A: Bindestreken ble et eget lite segment etter siste ord -> slå sammen med forrige ord!
+          // Tilfelle A: Bindestreken ble et eget lite segment rett etter siste ord -> slå sammen med forrige ord!
           const penultimateWord = lineWords[lineWords.length - 2];
           penultimateWord.wWithoutHyphen = penultimateWord.w;
           penultimateWord.w = Math.max(
@@ -1691,13 +1958,28 @@
           lineWords.pop();
           allWords.pop();
         } else if (
+          prevRun &&
           prevRun.left >= lastWord.spanLeft &&
           checkHyphenGeometry(lastRun.left, lastRun.right)
         ) {
           // Tilfelle B: Bindestreken er siste frittstående charRun inne i siste ord
-          const trimmedRight = Math.min(x1 - 1, x0 + prevRun.right + padX);
+          const trimmedRight = Math.min(x1 - 1, x0 + prevRun.right + 1);
           lastWord.hasTrailingHyphen = true;
           lastWord.wWithoutHyphen = Math.max(4, trimmedRight - lastWord.x + 1);
+        } else {
+          // Tilfelle C: 2D sammenhengende komponent helt til høyre i siste ord (tett kernet under/over seriff/løkke)
+          const comp = findRightmost2DHyphen(lastWord.spanLeft, lastWord.spanRight);
+          if (comp) {
+            const trimmedRight = Math.min(x1 - 1, x0 + comp.maxLetterC + 1);
+            lastWord.hasTrailingHyphen = true;
+            lastWord.wWithoutHyphen = Math.max(4, trimmedRight - lastWord.x + 1);
+            lastWord.hyphenBox = {
+              x0: x0 + comp.minC - 1,
+              x1: x0 + comp.maxC + 1,
+              y0: comp.minY - 1,
+              y1: comp.maxY + 1,
+            };
+          }
         }
       }
 
@@ -1941,15 +2223,31 @@
 
     const raw = new Float32Array(w * h);
     const slope = state.useDejaggBaseline ? (word.localSlope || 0) : 0;
+    const paperFallback = state.paperMedianLum || 235;
+    const maskHyphen =
+      word.joinWithNextWord &&
+      word.hyphenBox &&
+      word.w === word.wWithoutHyphen
+        ? word.hyphenBox
+        : null;
 
     if (Math.abs(slope) > 0.002) {
       const midC = (w - 1) * 0.5;
-      const paperFallback = state.paperMedianLum || 235;
       for (let c = 0; c < w; c++) {
         const absX = word.x + c;
         const dy = (c - midC) * slope;
         for (let r = 0; r < h; r++) {
           const sy = word.y + r + dy;
+          if (
+            maskHyphen &&
+            absX >= maskHyphen.x0 &&
+            absX <= maskHyphen.x1 &&
+            sy >= maskHyphen.y0 &&
+            sy <= maskHyphen.y1
+          ) {
+            raw[r * w + c] = paperFallback;
+            continue;
+          }
           const yFloor = Math.floor(sy);
           const ty = sy - yFloor;
           if (yFloor >= 0 && yFloor + 1 < fullH) {
@@ -1965,10 +2263,22 @@
       }
     } else {
       for (let r = 0; r < h; r++) {
-        const srcRow = (word.y + r) * fullW + word.x;
+        const absY = word.y + r;
+        const srcRow = absY * fullW + word.x;
         const dstRow = r * w;
         for (let c = 0; c < w; c++) {
-          raw[dstRow + c] = gray[srcRow + c];
+          const absX = word.x + c;
+          if (
+            maskHyphen &&
+            absX >= maskHyphen.x0 &&
+            absX <= maskHyphen.x1 &&
+            absY >= maskHyphen.y0 &&
+            absY <= maskHyphen.y1
+          ) {
+            raw[dstRow + c] = paperFallback;
+          } else {
+            raw[dstRow + c] = gray[srcRow + c];
+          }
         }
       }
     }
