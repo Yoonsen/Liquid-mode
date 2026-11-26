@@ -1,5 +1,5 @@
 {
-  "version": "1.7.2",
-  "updatedAt": "2026-11-26T18:48:00+01:00",
-  "summary": "Bevarer hele ord ved tett skannekant og bindestrek: starter aldri utsnittet 1,4 % inne i teksten (slik at venstre del av ord nær margen som 'drene.', 'datter?' og 'to' aldri kuttes), og gir +2 px luft til siste bokstav før bindestreken!"
+  "version": "1.7.3",
+  "updatedAt": "2026-11-26T18:54:00+01:00",
+  "summary": "Fikset 2,5 % (28 px) standard-utsnitt på IIIF-bøker som kuttet venstre del av 'Virgil' til 'irgil': nå brukes hele boksidens bredde med kun 3–4 px stripefilter, slik at 'Virgil' og alle ord ved venstremargen er 100 % komplette!"
 }

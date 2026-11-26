@@ -128,9 +128,9 @@
     iiifBook: null, // { title, pages: [{ label, serviceId }], currentIndex }
   };
 
-  const APP_VERSION = "1.7.2";
+  const APP_VERSION = "1.7.3";
   const APP_RELEASE_SUMMARY =
-    "Bevarer hele ord ved tett skannekant og bindestrek: starter aldri utsnittet 1,4 % inne i teksten (slik at venstre del av ord nær margen som 'drene.', 'datter?' og 'to' aldri kuttes), og gir +2 px luft til siste bokstav før bindestreken!";
+    "Fikset 2,5 % (28 px) standard-utsnitt på IIIF-bøker som kuttet venstre del av 'Virgil' til 'irgil': nå brukes hele boksidens bredde med kun 3–4 px stripefilter, slik at 'Virgil' og alle ord ved venstremargen er 100 % komplette!";
 
   // Hurtigminne (RAM-cache) for ferdig nedlastede IIIF-boksider (URL -> HTMLImageElement)
   const pageImageCache = new Map();
@@ -461,25 +461,16 @@
       deskewOutput.textContent = "0.0°";
     }
 
-    // Hvis brukeren allerede har justert utsnittet i en bok, behold det relative utsnittet
-    // mellom sidene! Ellers bruk en svært snill 2.5% ytterkant på IIIF-bøker slik at
-    // første/siste ord aldri klippes bort på pocketbøker.
-    if (state.iiifBook) {
-      if (state.savedCropRatio) {
-        state.cropRect = {
-          x: Math.round(targetW * state.savedCropRatio.rx),
-          y: Math.round(targetH * state.savedCropRatio.ry),
-          w: Math.round(targetW * state.savedCropRatio.rw),
-          h: Math.round(targetH * state.savedCropRatio.rh),
-        };
-      } else {
-        state.cropRect = {
-          x: Math.round(targetW * 0.025),
-          y: Math.round(targetH * 0.035),
-          w: Math.round(targetW * 0.95),
-          h: Math.round(targetH * 0.93),
-        };
-      }
+    // Hvis brukeren selv har trukket opp et manuelt utsnitt i boken (state.savedCropRatio),
+    // behold det mellom sidene. Ellers la state.cropRect være null slik at hele siden
+    // (med automatisk 3–4 px skannerstripe-filter) brukes og ord nær kanten som "Virgil." aldri kuttes!
+    if (state.iiifBook && state.savedCropRatio) {
+      state.cropRect = {
+        x: Math.round(targetW * state.savedCropRatio.rx),
+        y: Math.round(targetH * state.savedCropRatio.ry),
+        w: Math.round(targetW * state.savedCropRatio.rw),
+        h: Math.round(targetH * state.savedCropRatio.rh),
+      };
       resetCropBtn.disabled = false;
     } else {
       state.cropRect = null;
@@ -726,6 +717,8 @@
         startIdx = 6; // Hopp over perm og forsatsblad som standard på bøker
       }
 
+      state.savedCropRatio = null;
+      state.cropRect = null;
       state.iiifBook = {
         title: metaOverride?.title || manifest.label || "IIIF Digitalbok",
         accessText:
@@ -936,10 +929,10 @@
     const thresh = state.otsuThreshold;
 
     // 1. Skrell vekk mørke skannerammer ytterst (inntil 14% fra hver kant)
-    let minX = Math.round(w * 0.015);
-    let maxX = Math.round(w * 0.985);
-    let minY = Math.round(h * 0.015);
-    let maxY = Math.round(h * 0.985);
+    let minX = 0;
+    let maxX = w;
+    let minY = 0;
+    let maxY = h;
 
     const maxBorderX = Math.round(w * 0.14);
     const maxBorderY = Math.round(h * 0.12);
@@ -3279,7 +3272,7 @@
 
   resetCropBtn.addEventListener("click", () => {
     state.cropRect = null;
-    state.savedCropRatio = { rx: 0, ry: 0, rw: 1, rh: 1 };
+    state.savedCropRatio = null;
     resetCropBtn.disabled = true;
     runSegmentationAndRender();
   });
