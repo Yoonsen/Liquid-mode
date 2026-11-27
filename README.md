@@ -4,6 +4,11 @@
 
 I stedet for å tolke bokstaver med feilbarlig OCR (som ofte sliter med fraktur, eldre typografi, slitte typer eller skjermbilder), gjenkjenner **Pixel-Liquid Mode** tekstlinjer, grunnlinje (baseline) og ordskillere (`space`) direkte i bildets piksler. Hvert ord klippes ut som en egen bildebrikke og flyter fritt (`flex-wrap`) tilpasset skjermbredden og brukerens valgte forstørrelse.
 
+## 🎬 Demovideoer
+
+- 🇳🇴 **[Se demovideo med norsk fortellerstemme (`demo/pixel-liquid-demo-norsk.mp4`)](demo/pixel-liquid-demo-norsk.mp4)** ([Direktelenke på GitHub Pages](https://yoonsen.github.io/Liquid-mode/demo/pixel-liquid-demo-norsk.mp4))
+- 🇬🇧 **[Watch demo video with English voiceover (`demo/pixel-liquid-demo-english.mp4`)](demo/pixel-liquid-demo-english.mp4)** ([Direct link on GitHub Pages](https://yoonsen.github.io/Liquid-mode/demo/pixel-liquid-demo-english.mp4))
+
 ## Hovedfunksjoner
 
 - **100 % i nettleseren uten OCR:** Ingen tekst feiltolkes; original typografi og tegnsetting bevares.

@@ -497,7 +497,9 @@ body[data-app-screen="reader"] #library-view {
     2.5rem;
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
+  /* Midtstilt: ordutklippene har grunnlinjen i fast avstand fra midten (linjer med store
+     bokstaver får like mye ekstra luft over og under), ikke fra bunnkanten. */
+  align-items: center;
   align-content: flex-start;
   row-gap: var(--liquid-line-gap);
   column-gap: var(--liquid-word-gap);

@@ -1,5 +1,5 @@
 {
-  "version": "1.7.3",
-  "updatedAt": "2026-11-26T18:54:00+01:00",
-  "summary": "Fikset 2,5 % (28 px) standard-utsnitt på IIIF-bøker som kuttet venstre del av 'Virgil' til 'irgil': nå brukes hele boksidens bredde med kun 3–4 px stripefilter, slik at 'Virgil' og alle ord ved venstremargen er 100 % komplette!"
+  "version": "1.8.0",
+  "updatedAt": "2026-11-27T23:26:00+01:00",
+  "summary": "Renere linjeskift i Liquid-flyt: mørke sidekanter og støvkorn i margen blir ikke lenger egne «ord» (vertikale streker), halene på g/y/p fra linjen over blir ikke lenger en egen linje, og bindestrek-gjenkjenningen forveksler ikke lenger armen på «r» eller øret på «g» med en bindestrek. Doble frakturbindestreker (⸗) fjernes nå helt når ordet sys sammen."
 }

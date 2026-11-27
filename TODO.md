@@ -54,6 +54,21 @@ I stedet for tradisjonell panorering/zooming segmenterer appen tekstlinjer og en
   - Klipper ut hvert ord sentrert rundt sin lokale `yCoreLocal` og retter opp ordets helning til $0^\circ$ med rask vertikal skjæring (*vertical shear* med bilineær vertikal interpolasjon) direkte i `extractWordScalarField` (< 0,3 ms per side). Dermed møtes siste ord på linje $N$ og første ord på linje $N+1$ snorrett i CSS Flexbox!
   - Viser den tilpassede lokale grunnlinjekurven som en stiplet gull-linje i `✂️ Utsnitt & Skjevhet`-inspektøren, og kan skrus av/på under `▸ LAB` (`Lokal grunnlinje & helning (De-jagg)`).
 
+- [x] **v1.8.0 – Renere linjeskift og sikrere orddeling:**
+  - Mørke sidekanter/bokrygg og støv i margen maskeres via vertikal projeksjon over hele siden (smale blekkblokker > 1,5 linjehøyder utenfor tekstsatsen), så de ikke blir egne «ord» (vertikale streker) ytterst på linjene.
+  - Frittstående støvkorn (< 0,8 % av linjehøyden² i blekkpiksler) droppes.
+  - Tynne bånd rett under en linje (avkuttede underlengder) slås sammen med linjen over i stedet for å bli en egen linje.
+  - Bindestrek må ligge midt i x-høyden (målt over de siste ~6 linjehøydene av linjen); armen på «r» og øret på «g» avvises. Dobbel/skrå frakturbindestrek (⸗) gjenkjennes og fjernes helt.
+  - Skjæringen (de-jagg) dreier rundt samme kolonne også når bindestreken er kuttet bort; leseren midtstiller ordbrikkene (`align-items: center`).
+  - Testet på Sult s. 12–18, 40, 50, 51, 81, 120, 150, 151, 200, 250, 300 og de fire andre bøkene i biblioteket: alle sammensydde ord riktige, ingen falske.
+
+### 🚧 Pågår
+_(Ingenting akkurat nå. Skriv mål, hva som er prøvd, testsider og neste steg her når du starter på noe.)_
+
+Kjente svakheter å se på:
+- Stor initial (som «D» i Sult s. 12) blir delt over to linjer.
+- I `continuous-liquid-flow` får sammensydde ord fra kursiv småsats av og til et lite mellomrom før andre del (f.eks. «theater historie», bok …300044 s. 100).
+
 ### 🔜 Neste steg (Fase 1.4 & Fase 2)
 1. **Fase 1.4 – Typografisk marg-justering (Blokkjustering & Midtstilte overskrifter):**
    - Gruppere ordene per avsnitt i `<div class="liquid-paragraph">` med `display: inline-block` og CSS `text-align: justify; text-align-last: left;` (samt `text-align: center` for korte, symmetriske overskrifter).

@@ -26,6 +26,7 @@ jobs:
         run: |
           mkdir -p _site
           cp index.html styles.css app.js version.json favicon.svg README.md LICENSE _site/
+          if [ -d demo ]; then cp -r demo _site/; fi
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v4
         with:
