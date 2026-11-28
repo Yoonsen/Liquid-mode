@@ -69,7 +69,9 @@
   const lineGapSlider = document.getElementById("line-gap-slider");
   const lineGapOutput = document.getElementById("line-gap-output");
 
-  const renderModeButtons = document.querySelectorAll("[data-render-mode]");
+  const paletteButtons = document.querySelectorAll("[data-palette]");
+  const cleanMixSlider = document.getElementById("clean-mix-slider");
+  const edgeSoftnessSlider = document.getElementById("edge-softness-slider");
   const flowModeButtons = document.querySelectorAll("[data-flow-mode]");
   const traceModeButtons = document.querySelectorAll("[data-trace-mode]");
   const activeAlgoPill = document.getElementById("active-algo-pill");
@@ -107,7 +109,10 @@
     detectedWords: [],     // Flatt liste med alle ord-objekter
     hoveredWordId: null,
     selectedWord: null,
-    renderMode: "clean",   // 'clean' (standard!) | 'paper' | 'dark'
+    palette: "paper",      // 'paper' (målt papirtone) | 'white' | 'sepia' | 'night'
+    cleanMix: 1,           // 0 = originalt utklipp av boksiden … 1 = renset (vektorisert) tekst
+    edgeSoftness: 0,       // 0 = skarp vektorkant … 1 = myk kant
+    medianLineHeight: 24,  // Median linjehøyde på siden (kildepiksler), brukes til kant-mykheten
     flowMode: "auto",      // 'auto' (Original bredde når plass -> Liquid ved zoom) | 'liquid' | 'lines'
     baseNaturalLineWordSum: 640, // 85-persentil summert ordbredde (uskalert) for en full boklinje
     baseNaturalLineWordCount: 9, // Gjennomsnittlig antall ord i en full boklinje
@@ -128,9 +133,9 @@
     iiifBook: null, // { title, pages: [{ label, serviceId }], currentIndex }
   };
 
-  const APP_VERSION = "1.9.0";
+  const APP_VERSION = "1.10.0";
   const APP_RELEASE_SUMMARY =
-    "Jevnere overgang mellom linjene i Liquid-flyt: ordene plasseres nå etter linjens målte grunnlinje (målt i vinduer langs linjen) i stedet for etter hvert ords blekktyngdepunkt. Ordpar som bommer med 3 px eller mer ved linjeskift er nesten halvert.";
+    "Enklere Aa-meny: én glider fra boksidens originale utklipp til renset tekst (midt imellom får du papirpreg med skarpt blekk), fire fargevalg (Papir, Hvit, Sepia, Natt), strektykkelse og kant fra skarp til myk. Linjebryting, ordskille og tracing ligger under «Avansert», og valgene huskes til neste gang.";
 
   // Hurtigminne (RAM-cache) for ferdig nedlastede IIIF-boksider (URL -> HTMLImageElement)
   const pageImageCache = new Map();
@@ -2371,6 +2376,7 @@
     state.detectedParagraphCount = paragraphCount;
     state.detectedHyphenJoinCount = hyphenJoinCount;
     state.detectedLines = lines;
+    state.medianLineHeight = medianLineHeight;
     state.detectedWords = allWords;
 
     drawOverlayBoxes();
@@ -2845,11 +2851,46 @@
     return pts;
   }
 
+  // Fargevalg for den rensede teksten. Papir bruker bakgrunnen målt fra selve boksiden.
+  const PALETTES = {
+    paper: { bg: null, ink: [20, 22, 28] },
+    white: { bg: "#ffffff", ink: [17, 17, 17] },
+    sepia: { bg: "#f1e2c4", ink: [74, 47, 23] },
+    night: { bg: "#14161a", ink: [236, 231, 218] },
+  };
+
+  function currentInkRgb() {
+    return (PALETTES[state.palette] || PALETTES.paper).ink;
+  }
+
   /**
-   * Tegner et enkelt ord på målet sitt <canvas> med valgt renderMode og traceMode.
+   * Tegner det originale utklippet av ordet fra boksiden (med samme skjæring/de-jagg som
+   * den rensede teksten, slik at de to lagene ligger nøyaktig oppå hverandre).
+   */
+  function drawOriginalWordCanvas(wCanvas, word) {
+    const wCtx = wCanvas.getContext("2d");
+    wCanvas.width = word.w;
+    wCanvas.height = word.h;
+    const slope = state.useDejaggBaseline ? (word.localSlope || 0) : 0;
+    if (Math.abs(slope) > 0.003) {
+      const midC = word.shearMidC ?? (word.w - 1) * 0.5;
+      wCtx.fillStyle = state.sampledPaperHex || "#f8f4e8";
+      wCtx.fillRect(0, 0, word.w, word.h);
+      for (let c = 0; c < word.w; c += 2) {
+        const sliceW = Math.min(2, word.w - c);
+        const dy = ((c + sliceW * 0.5) - midC) * slope;
+        wCtx.drawImage(sourceCanvas, word.x + c, word.y + dy, sliceW, word.h, c, 0, sliceW, word.h);
+      }
+    } else {
+      wCtx.drawImage(sourceCanvas, word.x, word.y, word.w, word.h, 0, 0, word.w, word.h);
+    }
+  }
+
+  /**
+   * Tegner den rensede teksten for et enkelt ord på målet sitt <canvas> med valgt traceMode
+   * og blekkfargen fra fargevalget.
    */
   function drawWordTokenCanvas(wCanvas, word, baseInkThreshold, overrideTraceMode = null, overrideScale = null) {
-    const mode = state.renderMode;
     const tMode = overrideTraceMode || state.traceMode;
     // La aldri effektiv terskel (inkl. blekkfylde-offset) krysse opp i selve papirfargen!
     const maxSafeForPaper = Math.max(60, (state.paperMedianLum || 220) - 22);
@@ -2860,49 +2901,8 @@
 
     const wCtx = wCanvas.getContext("2d");
 
-    // 1. Originalt papir (viser alltid det ekte foto-utklippet, men unntatt i wireframe-debug)
-    if (mode === "paper" && tMode !== "wireframe" && !overrideTraceMode) {
-      wCanvas.width = word.w;
-      wCanvas.height = word.h;
-      const slope = state.useDejaggBaseline ? (word.localSlope || 0) : 0;
-      if (Math.abs(slope) > 0.003) {
-        const midC = word.shearMidC ?? (word.w - 1) * 0.5;
-        wCtx.fillStyle = state.sampledPaperHex || "#f8f4e8";
-        wCtx.fillRect(0, 0, word.w, word.h);
-        for (let c = 0; c < word.w; c += 2) {
-          const sliceW = Math.min(2, word.w - c);
-          const dy = ((c + sliceW * 0.5) - midC) * slope;
-          wCtx.drawImage(
-            sourceCanvas,
-            word.x + c,
-            word.y + dy,
-            sliceW,
-            word.h,
-            c,
-            0,
-            sliceW,
-            word.h
-          );
-        }
-      } else {
-        wCtx.drawImage(
-          sourceCanvas,
-          word.x,
-          word.y,
-          word.w,
-          word.h,
-          0,
-          0,
-          word.w,
-          word.h
-        );
-      }
-      return;
-    }
-
-    const fgColor =
-      mode === "dark" ? "rgb(244, 241, 232)" : "rgb(15, 23, 42)";
-    const fgRgb = mode === "dark" ? [244, 241, 232] : [15, 23, 42];
+    const fgRgb = currentInkRgb();
+    const fgColor = `rgb(${fgRgb[0]}, ${fgRgb[1]}, ${fgRgb[2]})`;
 
     // 2. Rå 1x piksler
     if (tMode === "raw") {
@@ -3077,10 +3077,41 @@
     loupeWireCanvas.style.height = cssH;
   }
 
+  /**
+   * Lager ordets to lag oppå hverandre: originalt utklipp (nederst) og renset tekst (øverst).
+   * Glideren «Boksiden ↔ Renset tekst» styrer bare gjennomsiktigheten (CSS-variabler), så den
+   * reagerer umiddelbart. Det rensede laget tegnes ikke når glideren står helt på «Boksiden».
+   */
+  function createWordStack(word, inkThreshold) {
+    const stack = document.createElement("span");
+    stack.className = "word-stack";
+    const cssW = `${Math.round(word.w * state.scaleFactor)}px`;
+    const cssH = `${Math.round(word.h * state.scaleFactor)}px`;
+    for (const layer of ["orig", "ink"]) {
+      const c = document.createElement("canvas");
+      c.className = `word-${layer}`;
+      c.dataset.origW = String(word.w);
+      c.dataset.origH = String(word.h);
+      c.style.width = cssW;
+      c.style.height = cssH;
+      stack.appendChild(c);
+    }
+    drawOriginalWordCanvas(stack.firstChild, word);
+    if (state.cleanMix > 0) {
+      drawWordTokenCanvas(stack.lastChild, word, inkThreshold);
+    } else {
+      stack.lastChild.dataset.inkPending = "1";
+      stack.lastChild.width = 1;
+      stack.lastChild.height = 1;
+    }
+    return stack;
+  }
+
   function renderLiquidWords(inkThreshold) {
     const t0 = performance.now();
     liquidReader.innerHTML = "";
-    liquidReader.className = `liquid-reader mode-${state.renderMode}`;
+    state.inkPending = state.cleanMix <= 0;
+    applyAppearanceVariables();
     updateReaderSpacingVariables();
 
     if (state.detectedWords.length === 0) {
@@ -3140,13 +3171,7 @@
         token.dataset.wordId = String(word.id);
         token.title = `Linje ${line.lineIndex + 1}, ord #${word.id} — Klikk for å inspisere i lupe`;
 
-        const wCanvas = document.createElement("canvas");
-        wCanvas.dataset.origW = String(word.w);
-        wCanvas.dataset.origH = String(word.h);
-        wCanvas.style.width = `${Math.round(word.w * state.scaleFactor)}px`;
-        wCanvas.style.height = `${Math.round(word.h * state.scaleFactor)}px`;
-
-        drawWordTokenCanvas(wCanvas, word, inkThreshold);
+        const wCanvas = createWordStack(word, inkThreshold);
 
         // Koble hover/trykk på ordet i Liquid-leseren til markering i originalbildet + lupe
         token.addEventListener("pointerenter", () => {
@@ -3190,20 +3215,10 @@
             ...word,
             w: Math.max(3, word.wWithoutHyphen || word.w),
           };
-          const canvasA = document.createElement("canvas");
-          canvasA.dataset.origW = String(trimmedWordA.w);
-          canvasA.dataset.origH = String(trimmedWordA.h);
-          canvasA.style.width = `${Math.round(trimmedWordA.w * state.scaleFactor)}px`;
-          canvasA.style.height = `${Math.round(trimmedWordA.h * state.scaleFactor)}px`;
-          drawWordTokenCanvas(canvasA, trimmedWordA, inkThreshold);
+          const canvasA = createWordStack(trimmedWordA, inkThreshold);
 
           // Andre del fra starten av neste linje ("bad")
-          const canvasB = document.createElement("canvas");
-          canvasB.dataset.origW = String(nextWord.w);
-          canvasB.dataset.origH = String(nextWord.h);
-          canvasB.style.width = `${Math.round(nextWord.w * state.scaleFactor)}px`;
-          canvasB.style.height = `${Math.round(nextWord.h * state.scaleFactor)}px`;
-          drawWordTokenCanvas(canvasB, nextWord, inkThreshold);
+          const canvasB = createWordStack(nextWord, inkThreshold);
 
           mergedToken.addEventListener("pointerenter", () => {
             state.hoveredWordId = word.id;
@@ -3267,6 +3282,89 @@
    * Oppdaterer kun CSS-dimensjoner når brukeren drar i Forstørring eller Linjeavstand
    * (0 ms forsinkelse, trenger ikke kjøre bildeanalyse på nytt!).
    */
+  /**
+   * Setter fargevalg, blanding mellom original og renset tekst, og kantmykhet som klasser og
+   * CSS-variabler på leseren. Ingen ny tegning trengs (unntatt blekkfarge, se paletteButtons).
+   */
+  function applyAppearanceVariables() {
+    const m = Math.max(0, Math.min(1, state.cleanMix));
+    // Halvveis vises begge lagene fullt: papirstrukturen fra originalen med skarpt blekk oppå
+    const inkOpacity = Math.min(1, m * 2);
+    const origOpacity = Math.min(1, (1 - m) * 2);
+    const palette = PALETTES[state.palette] ? state.palette : "paper";
+    // Slå av/på enkeltklasser, så flytmodus-klassene fra evaluateSmartLineFlow beholdes
+    for (const name of Object.keys(PALETTES)) {
+      liquidReader.classList.toggle(`palette-${name}`, name === palette);
+    }
+    liquidReader.classList.toggle("shows-original", origOpacity > 0);
+    liquidReader.classList.toggle("soft-edges", state.edgeSoftness > 0);
+    liquidReader.style.setProperty("--ink-opacity", inkOpacity.toFixed(2));
+    liquidReader.style.setProperty("--orig-opacity", origOpacity.toFixed(2));
+    const paletteBg = PALETTES[palette].bg;
+    liquidReader.style.setProperty("--reader-bg", paletteBg || state.sampledPaperHex || "#f6efe0");
+    // Lys opp originalens papir mot hvitt, så det smelter inn i hvit/sepia/natt-bakgrunn
+    const paperLum = Math.max(120, state.paperMedianLum || 220);
+    liquidReader.style.setProperty("--orig-brightness", (248 / paperLum).toFixed(3));
+    // Myk kant: inntil ca. 1,5 % av linjehøyden på skjermen (mer blir bare uskarpt)
+    const blurPx = state.edgeSoftness * 0.015 * (state.medianLineHeight || 24) * state.scaleFactor;
+    liquidReader.style.setProperty("--ink-blur", `${blurPx.toFixed(2)}px`);
+  }
+
+  const APPEARANCE_STORAGE_KEY = "pixel_liquid_appearance";
+
+  function saveAppearanceSettings() {
+    try {
+      localStorage.setItem(
+        APPEARANCE_STORAGE_KEY,
+        JSON.stringify({
+          scale: state.scaleFactor,
+          cleanMix: state.cleanMix,
+          palette: state.palette,
+          strokeOffset: state.strokeOffset,
+          edgeSoftness: state.edgeSoftness,
+          lineGap: state.lineGapMultiplier,
+        })
+      );
+    } catch (err) {
+      // Privat modus / blokkert lagring: innstillingene gjelder bare denne økten
+    }
+  }
+
+  function loadAppearanceSettings() {
+    let saved = null;
+    try {
+      saved = JSON.parse(localStorage.getItem(APPEARANCE_STORAGE_KEY) || "null");
+    } catch (err) {
+      saved = null;
+    }
+    if (!saved || typeof saved !== "object") return;
+    const num = (v, lo, hi) => (typeof v === "number" && v >= lo && v <= hi ? v : null);
+    const scale = num(saved.scale, 0.35, 3.5);
+    if (scale !== null) state.scaleFactor = scale;
+    const mix = num(saved.cleanMix, 0, 1);
+    if (mix !== null) state.cleanMix = mix;
+    if (PALETTES[saved.palette]) state.palette = saved.palette;
+    const stroke = num(saved.strokeOffset, -15, 18);
+    if (stroke !== null) state.strokeOffset = stroke;
+    const soft = num(saved.edgeSoftness, 0, 1);
+    if (soft !== null) state.edgeSoftness = soft;
+    const gap = num(saved.lineGap, 1, 2.4);
+    if (gap !== null) state.lineGapMultiplier = gap;
+  }
+
+  function syncAppearanceControls() {
+    scaleSlider.value = String(Math.round(state.scaleFactor * 100));
+    scaleOutput.textContent = `${Math.round(state.scaleFactor * 100)}%`;
+    if (cleanMixSlider) cleanMixSlider.value = String(Math.round(state.cleanMix * 100));
+    setCleanMixLabel();
+    strokeWeightSlider.value = String(state.strokeOffset);
+    strokeWeightOutput.textContent = state.strokeOffset > 0 ? `+${state.strokeOffset}` : String(state.strokeOffset);
+    if (edgeSoftnessSlider) edgeSoftnessSlider.value = String(Math.round(state.edgeSoftness * 100));
+    lineGapSlider.value = String(state.lineGapMultiplier);
+    lineGapOutput.textContent = `${state.lineGapMultiplier.toFixed(2)}×`;
+    syncPaletteButtons();
+  }
+
   function applyScaleWithoutResegmenting() {
     const canvases = liquidReader.querySelectorAll(".word-token canvas");
     canvases.forEach((c) => {
@@ -3673,6 +3771,8 @@
     scaleOutput.textContent = `${pct}%`;
     state.scaleFactor = pct / 100;
     applyScaleWithoutResegmenting();
+    applyAppearanceVariables();
+    saveAppearanceSettings();
   });
 
   spaceSlider.addEventListener("input", () => {
@@ -3694,6 +3794,7 @@
     lineGapOutput.textContent = `${val.toFixed(2)}×`;
     state.lineGapMultiplier = val;
     updateReaderSpacingVariables();
+    saveAppearanceSettings();
   });
 
   function updateActiveAlgoSummaryPill() {
@@ -3715,21 +3816,6 @@
       Math.min(235, state.otsuThreshold + state.contrastOffset)
     );
   }
-
-  renderModeButtons.forEach((btn) => {
-    btn.addEventListener("click", () => {
-      renderModeButtons.forEach((b) => {
-        b.classList.remove("active");
-        b.setAttribute("aria-pressed", "false");
-      });
-      btn.classList.add("active");
-      btn.setAttribute("aria-pressed", "true");
-      state.renderMode = btn.dataset.renderMode;
-
-      updateActiveAlgoSummaryPill();
-      renderLiquidWords(currentEffectiveInkThreshold());
-    });
-  });
 
   flowModeButtons.forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -3753,17 +3839,6 @@
       btn.classList.add("active");
       btn.setAttribute("aria-pressed", "true");
       state.traceMode = btn.dataset.traceMode;
-
-      // Hvis brukeren klikker på en av Renset/Tracing-algoritmene mens "Originalt papir"
-      // står på, bytt automatisk over til "Renset blekk" (med mindre det er wireframe-debug)
-      if (state.renderMode === "paper" && state.traceMode !== "wireframe") {
-        state.renderMode = "clean";
-        renderModeButtons.forEach((b) => {
-          const isClean = b.dataset.renderMode === "clean";
-          b.classList.toggle("active", isClean);
-          b.setAttribute("aria-pressed", isClean ? "true" : "false");
-        });
-      }
 
       updateActiveAlgoSummaryPill();
       renderLiquidWords(currentEffectiveInkThreshold());
@@ -3790,20 +3865,60 @@
     const val = Number(strokeWeightSlider.value);
     strokeWeightOutput.textContent = val > 0 ? `+${val}` : String(val);
     state.strokeOffset = val;
-
-    // Hvis brukeren drar i Teksttykkelse (Blekkfylde) mens "Originalt papir" er valgt,
-    // bytt automatisk til "Renset blekk" slik at effekten synes med en gang!
-    if (state.renderMode === "paper") {
-      state.renderMode = "clean";
-      renderModeButtons.forEach((b) => {
-        const isClean = b.dataset.renderMode === "clean";
-        b.classList.toggle("active", isClean);
-        b.setAttribute("aria-pressed", isClean ? "true" : "false");
-      });
-    }
-
+    saveAppearanceSettings();
     updateActiveAlgoSummaryPill();
     renderLiquidWords(currentEffectiveInkThreshold());
+  });
+
+  // --- Utseende: Boksiden ↔ Renset tekst, farger og kant ---
+  function setCleanMixLabel() {
+    if (!cleanMixSlider) return;
+    const pct = Math.round(state.cleanMix * 100);
+    cleanMixSlider.setAttribute(
+      "aria-valuetext",
+      pct === 0 ? "Boksiden" : pct === 100 ? "Renset tekst" : `${pct} % renset`
+    );
+  }
+
+  function syncPaletteButtons() {
+    paletteButtons.forEach((b) => {
+      const on = b.dataset.palette === state.palette;
+      b.classList.toggle("active", on);
+      b.setAttribute("aria-pressed", on ? "true" : "false");
+    });
+  }
+
+  if (cleanMixSlider) {
+    cleanMixSlider.addEventListener("input", () => {
+      state.cleanMix = Number(cleanMixSlider.value) / 100;
+      setCleanMixLabel();
+      saveAppearanceSettings();
+      if (state.cleanMix > 0 && state.inkPending) {
+        // Det rensede laget ble ikke tegnet mens glideren sto på «Boksiden»
+        renderLiquidWords(currentEffectiveInkThreshold());
+      } else {
+        applyAppearanceVariables();
+      }
+    });
+  }
+
+  if (edgeSoftnessSlider) {
+    edgeSoftnessSlider.addEventListener("input", () => {
+      state.edgeSoftness = Number(edgeSoftnessSlider.value) / 100;
+      saveAppearanceSettings();
+      applyAppearanceVariables();
+    });
+  }
+
+  paletteButtons.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      if (state.palette === btn.dataset.palette) return;
+      state.palette = btn.dataset.palette;
+      syncPaletteButtons();
+      saveAppearanceSettings();
+      // Blekkfargen er tegnet inn i det rensede laget, så det må tegnes på nytt
+      renderLiquidWords(currentEffectiveInkThreshold());
+    });
   });
 
   toggleLoupe.addEventListener("change", () => {
@@ -4249,6 +4364,11 @@
   }
 
   initUpdateNotification();
+
+  // Husk lesernes utseendevalg mellom besøk (bare i denne nettleseren)
+  loadAppearanceSettings();
+  syncAppearanceControls();
+  applyAppearanceVariables();
 
   // Feilsøkingskrok: med ?debug i URL-en kan konsollen lese tilstanden (window.__pixelLiquid)
   if (/[?&]debug\b/.test(window.location.search)) {

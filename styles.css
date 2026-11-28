@@ -507,19 +507,64 @@ body[data-app-screen="reader"] #library-view {
   touch-action: pan-y;
 }
 
-.liquid-reader.mode-paper {
-  background-color: var(--sampled-paper-bg, #f7f2e4);
-  color: #1c1915;
-}
-
-.liquid-reader.mode-clean {
-  background-color: var(--sampled-paper-bg, #f7f2e4);
+/* Fargevalg (Aa → Farger). --reader-bg settes fra app.js (Papir = målt papirtone). */
+.liquid-reader {
+  background-color: var(--reader-bg, var(--sampled-paper-bg, #f7f2e4));
   color: #141923;
 }
 
-.liquid-reader.mode-dark {
-  background-color: #101318;
-  color: #f8fafc;
+.liquid-reader.palette-night {
+  color: #ece7da;
+}
+
+/* Hvert ord har to lag oppå hverandre: originalt utklipp og renset tekst.
+   Glideren «Boksiden ↔ Renset tekst» styrer bare gjennomsiktigheten. */
+.word-stack {
+  position: relative;
+  display: block;
+}
+
+.word-stack .word-orig {
+  opacity: var(--orig-opacity, 0);
+}
+
+.word-stack .word-ink {
+  position: absolute;
+  inset: 0;
+  opacity: var(--ink-opacity, 1);
+}
+
+.liquid-reader:not(.shows-original) .word-orig {
+  visibility: hidden;
+}
+
+/* Originalen: lys papiret opp mot hvitt og multipliser, så utklippet smelter inn i
+   bakgrunnen (ingen synlige rektangler) og bare blekket med litt struktur blir igjen. */
+.liquid-reader.palette-paper .word-orig,
+.liquid-reader.palette-white .word-orig,
+.liquid-reader.palette-sepia .word-orig {
+  filter: brightness(var(--orig-brightness, 1.1));
+  mix-blend-mode: multiply;
+}
+
+/* Hvit: helt grå, ellers blir det gulaktige papiret synlige rektangler */
+.liquid-reader.palette-white .word-orig {
+  filter: grayscale(1) brightness(var(--orig-brightness, 1.1));
+}
+
+.liquid-reader.palette-sepia .word-orig {
+  filter: grayscale(0.6) brightness(var(--orig-brightness, 1.1));
+}
+
+/* Originalen i natt: grå, lys opp og inverter (papir → svart, blekk → lyst) med varm tone.
+   Uten grått blir gulaktig papir blått når det inverteres. */
+.liquid-reader.palette-night .word-orig {
+  filter: grayscale(1) brightness(var(--orig-brightness, 1.1)) invert(1) sepia(0.2);
+  mix-blend-mode: screen;
+}
+
+.liquid-reader.soft-edges .word-ink {
+  filter: blur(var(--ink-blur, 0px));
 }
 
 /* Mikro-statuslinje helt nederst på boksiden (som på Kindle Paperwhite) */
@@ -1099,7 +1144,7 @@ input[type="text"] {
   border-bottom: 1px dotted rgba(180, 83, 9, 0.35);
 }
 
-.word-token.hyphen-merged-token canvas + canvas {
+.word-token.hyphen-merged-token .word-stack + .word-stack {
   margin-inline-start: -1px;
 }
 
@@ -1168,4 +1213,102 @@ input[type="text"] {
   text-align: center;
   color: var(--text-muted);
   inline-size: 100%;
+}
+
+/* ==========================================================================
+   Aa-menyen: hovedkontroller, fargevalg og «Avansert»
+   ========================================================================== */
+.aa-main-controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+  gap: 0.85rem 1.25rem;
+  padding: 0.85rem 1rem 1rem;
+}
+
+.slider-end-label {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.slider-label-text {
+  display: block;
+  margin-block-end: 0.35rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.palette-buttons {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.4rem;
+}
+
+.palette-btn {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.4rem 0.25rem;
+  font-size: 0.78rem;
+  border: 1px solid rgba(128, 128, 128, 0.3);
+  border-radius: 0.5rem;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.palette-btn.active {
+  border-color: var(--brand-color);
+  box-shadow: 0 0 0 1px var(--brand-color);
+}
+
+.palette-swatch {
+  inline-size: 1.6rem;
+  block-size: 1.1rem;
+  border-radius: 0.3rem;
+  border: 1px solid rgba(128, 128, 128, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font: 600 0.7rem/1 Georgia, serif;
+}
+
+.palette-swatch::after {
+  content: "Aa";
+}
+
+.palette-swatch-paper { background: #efe6d2; color: #14161c; }
+.palette-swatch-white { background: #ffffff; color: #111111; }
+.palette-swatch-sepia { background: #f1e2c4; color: #4a2f17; }
+.palette-swatch-night { background: #14161a; color: #ece7da; }
+
+.aa-advanced-details {
+  border-top: 1px solid rgba(128, 128, 128, 0.18);
+}
+
+.aa-advanced-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.7rem 1rem;
+  cursor: pointer;
+  list-style: none;
+  font-size: 0.9rem;
+}
+
+.aa-advanced-summary::-webkit-details-marker {
+  display: none;
+}
+
+.aa-advanced-details[open] > .aa-advanced-summary .disclosure-chevron {
+  transform: rotate(90deg);
+}
+
+.aa-advanced-hint {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.aa-advanced-slider {
+  padding: 0 1rem 0.85rem;
 }

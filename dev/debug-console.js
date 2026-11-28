@@ -161,7 +161,7 @@ export async function merged(pages, urn = SULT) {
   for (const p of pages) {
     await waitLoad(p, urn);
     document.querySelectorAll(".hyphen-merged-token").forEach((t) => {
-      const [a, b] = t.querySelectorAll("canvas");
+      const [a, b] = t.querySelectorAll("canvas.word-ink");
       cs.push([p, a, b]);
     });
   }

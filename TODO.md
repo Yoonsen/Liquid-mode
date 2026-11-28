@@ -64,6 +64,8 @@ I stedet for tradisjonell panorering/zooming segmenterer appen tekstlinjer og en
 
 - [x] **v1.9.0 – Utklipp etter målt grunnlinje:** Grunnlinjen (underkanten av x-høyden, persentilmetoden) måles i overlappende vinduer på ~4 linjehøyder langs hver linje; avvikende vinduer forkastes, og en lokal vektet rett linje gir grunnlinje og helning per ord. Utklippene legges etter denne i stedet for ordets eget blekktyngdepunkt (som er reserve). Målt med `D.measure()` på 17 sider i fem bøker: ordpar med ≥ 3 px avvik ved linjeskift 18,4 % → 10,9 % (innenfor linjene uendret ~14 %, som er målestøyen). Inspektørens stiplede kurve viser nå selve grunnlinjen.
 
+- [x] **v1.10.0 – Forenklet Aa-meny:** Tekststørrelse, én glider «Boksiden ↔ Renset tekst», fire fargevalg (Papir/Hvit/Sepia/Natt), strektykkelse, kant skarp ↔ myk og linjeavstand. Linjebryting, ordskille og LAB under «Avansert». Hvert ord er to canvas oppå hverandre (`.word-orig` + `.word-ink`); glideren og kantmykheten er bare CSS-variabler (`--orig-opacity`, `--ink-opacity`, `--ink-blur`) og reagerer umiddelbart. Originalen lyses opp og multipliseres (natt: grå + invertert + screen), så utklippene smelter inn i bakgrunnen. Valgene lagres i `localStorage` (`pixel_liquid_appearance`).
+
 ### 🚧 Pågår
 _(Ingenting akkurat nå. Skriv mål, hva som er prøvd, testsider og neste steg her når du starter på noe.)_
 

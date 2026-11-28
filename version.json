@@ -1,5 +1,5 @@
 {
-  "version": "1.9.0",
-  "updatedAt": "2026-11-28T09:28:00+01:00",
-  "summary": "Jevnere overgang mellom linjene i Liquid-flyt: ordene plasseres nå etter linjens målte grunnlinje (målt i vinduer langs linjen) i stedet for etter hvert ords blekktyngdepunkt. Ordpar som bommer med 3 px eller mer ved linjeskift er nesten halvert."
+  "version": "1.10.0",
+  "updatedAt": "2026-11-28T11:19:00+01:00",
+  "summary": "Enklere Aa-meny: én glider fra boksidens originale utklipp til renset tekst (midt imellom får du papirpreg med skarpt blekk), fire fargevalg (Papir, Hvit, Sepia, Natt), strektykkelse og kant fra skarp til myk. Linjebryting, ordskille og tracing ligger under «Avansert», og valgene huskes til neste gang."
 }

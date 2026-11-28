@@ -8,7 +8,7 @@
   <title>Pixel-Liquid Mode — Bibliotek &amp; Leseflate uten OCR</title>
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
   <link rel="apple-touch-icon" href="favicon.svg" />
-  <link rel="stylesheet" href="styles.css?v=21" />
+  <link rel="stylesheet" href="styles.css?v=22" />
 </head>
 <body data-app-screen="library">
   <!-- OPPDATERINGSVARSEL (varsler når ny versjon er rullet ut på GitHub Pages) -->
@@ -229,7 +229,7 @@
         ← Bibliotek
       </button>
 
-      <button type="button" id="open-aa-sheet-btn" class="hud-pill-btn hud-aa-btn" aria-expanded="false" title="Juster tekststørrelse, blekkfylde, utsnitt, fargetema og tracing">
+      <button type="button" id="open-aa-sheet-btn" class="hud-pill-btn hud-aa-btn" aria-expanded="false" title="Juster tekststørrelse, farger, strek og utsnitt">
         Aa Utseende
       </button>
     </div>
@@ -243,7 +243,7 @@
       <button type="button" id="next-page-btn" class="hud-pill-btn">Neste →</button>
     </div>
 
-    <!-- SKUFF / POPOVER FOR "Aa Utseende" (Skriftstørrelse, Blekkfylde, Utsnitt, Tema og LAB) -->
+    <!-- SKUFF / POPOVER FOR "Aa Utseende": størrelse, original ↔ renset, farger, strek, kant, linjeavstand; resten under «Avansert» -->
     <aside id="aa-settings-sheet" class="aa-settings-sheet" hidden aria-label="Utseende og skriftinnstillinger">
       <div class="sheet-header">
         <div class="sheet-title-group">
@@ -259,35 +259,10 @@
         </div>
       </div>
 
-      <div class="theme-pills" role="group" aria-label="Fargetema">
-        <button type="button" class="pill-btn active" data-render-mode="clean" aria-pressed="true">
-          Renset blekk (Papir)
-        </button>
-        <button type="button" class="pill-btn" data-render-mode="paper" aria-pressed="false">
-          Originalt utklipp
-        </button>
-        <button type="button" class="pill-btn" data-render-mode="dark" aria-pressed="false">
-          Nattmodus
-        </button>
-      </div>
-
-      <div class="theme-pills flow-mode-pills" role="group" aria-label="Linjebryting og bredde">
-        <span class="pill-group-label">Linjebryting:</span>
-        <button type="button" class="pill-btn active" data-flow-mode="auto" aria-pressed="true" title="Beholder originalens linjelengde når det er god plass på skjermen, og blir automatisk Liquid når du forstørrer eller bruker liten skjerm!">
-          Auto (Original bredde → Liquid)
-        </button>
-        <button type="button" class="pill-btn" data-flow-mode="liquid" aria-pressed="false" title="Fyller hele leseflatens bredde kontinuerlig ved å trekke opp ord fra neste linje">
-          Full Liquid-flyt
-        </button>
-        <button type="button" class="pill-btn" data-flow-mode="lines" aria-pressed="false" title="Tvinger hvert linjeskift fra originalboken til alltid å starte på ny linje">
-          Låste originallinjer
-        </button>
-      </div>
-
-      <div class="controls-bar" role="region" aria-label="Lesekontroller">
+      <div class="aa-main-controls" role="region" aria-label="Utseende">
         <div class="slider-group">
           <div class="slider-label-row">
-            <label for="scale-slider">Tekststørrelse (Skala)</label>
+            <label for="scale-slider">Tekststørrelse</label>
             <output id="scale-output" for="scale-slider">65%</output>
           </div>
           <input type="range" id="scale-slider" min="35" max="350" step="5" value="65" />
@@ -295,10 +270,45 @@
 
         <div class="slider-group">
           <div class="slider-label-row">
-            <label for="stroke-weight-slider">Teksttykkelse (Blekkfylde)</label>
+            <label for="clean-mix-slider">Boksiden</label>
+            <span class="slider-end-label">Renset tekst</span>
+          </div>
+          <input type="range" id="clean-mix-slider" min="0" max="100" step="5" value="100"
+            aria-valuetext="Renset tekst" title="Fra originalt utklipp av boksiden til renset, vektorisert tekst" />
+        </div>
+
+        <div class="palette-group" role="group" aria-label="Farger">
+          <span class="slider-label-text">Farger</span>
+          <div class="palette-buttons">
+            <button type="button" class="palette-btn active" data-palette="paper" aria-pressed="true">
+              <span class="palette-swatch palette-swatch-paper" aria-hidden="true"></span>Papir
+            </button>
+            <button type="button" class="palette-btn" data-palette="white" aria-pressed="false">
+              <span class="palette-swatch palette-swatch-white" aria-hidden="true"></span>Hvit
+            </button>
+            <button type="button" class="palette-btn" data-palette="sepia" aria-pressed="false">
+              <span class="palette-swatch palette-swatch-sepia" aria-hidden="true"></span>Sepia
+            </button>
+            <button type="button" class="palette-btn" data-palette="night" aria-pressed="false">
+              <span class="palette-swatch palette-swatch-night" aria-hidden="true"></span>Natt
+            </button>
+          </div>
+        </div>
+
+        <div class="slider-group">
+          <div class="slider-label-row">
+            <label for="stroke-weight-slider">Strektykkelse</label>
             <output id="stroke-weight-output" for="stroke-weight-slider">+9</output>
           </div>
           <input type="range" id="stroke-weight-slider" min="-15" max="18" step="3" value="9" />
+        </div>
+
+        <div class="slider-group">
+          <div class="slider-label-row">
+            <label for="edge-softness-slider">Kant: skarp</label>
+            <span class="slider-end-label">myk</span>
+          </div>
+          <input type="range" id="edge-softness-slider" min="0" max="100" step="5" value="0" />
         </div>
 
         <div class="slider-group">
@@ -308,15 +318,35 @@
           </div>
           <input type="range" id="line-gap-slider" min="1.0" max="2.4" step="0.05" value="1.35" />
         </div>
+      </div>
 
-        <div class="slider-group">
+      <details class="aa-advanced-details" id="aa-advanced-details">
+        <summary class="aa-advanced-summary">
+          <span class="disclosure-chevron" aria-hidden="true">▸</span>
+          <strong>Avansert</strong>
+          <span class="aa-advanced-hint">Linjebryting, ordskille, tracing</span>
+        </summary>
+
+        <div class="theme-pills flow-mode-pills" role="group" aria-label="Linjebryting og bredde">
+          <span class="pill-group-label">Linjebryting:</span>
+          <button type="button" class="pill-btn active" data-flow-mode="auto" aria-pressed="true" title="Beholder originalens linjelengde når det er god plass på skjermen, og blir automatisk Liquid når du forstørrer eller bruker liten skjerm">
+            Auto
+          </button>
+          <button type="button" class="pill-btn" data-flow-mode="liquid" aria-pressed="false" title="Fyller hele leseflatens bredde kontinuerlig ved å trekke opp ord fra neste linje">
+            Full Liquid-flyt
+          </button>
+          <button type="button" class="pill-btn" data-flow-mode="lines" aria-pressed="false" title="Tvinger hvert linjeskift fra originalboken til alltid å starte på ny linje">
+            Låste originallinjer
+          </button>
+        </div>
+
+        <div class="slider-group aa-advanced-slider">
           <div class="slider-label-row">
             <label for="space-slider">Ordskille-følsomhet</label>
             <output id="space-output" for="space-slider">1.00×</output>
           </div>
           <input type="range" id="space-slider" min="0.45" max="2.20" step="0.05" value="1.00" />
         </div>
-      </div>
 
       <!-- SAMMENLEGGBAR LAB-FLIS INNE I Aa-SKUFFEN -->
       <details class="trace-lab-details" id="trace-lab-details">
@@ -404,6 +434,7 @@
           </div>
         </div>
       </details>
+      </details>
     </aside>
 
     <!-- OVERLAY / MODAL FOR "✂️ Utsnitt & Skjevhet" (Originalbilde med 8 dra-håndtak og Auto-retting) -->
@@ -456,7 +487,7 @@
     <main class="reader-stage" id="workspace-grid">
       <div
         id="liquid-reader"
-        class="liquid-reader mode-clean"
+        class="liquid-reader palette-paper"
         tabindex="0"
         role="region"
         aria-label="Flytende piksel-tekst"
@@ -482,6 +513,6 @@
     <button type="button" id="zen-split-btn" hidden></button>
   </div>
 
-  <script src="app.js?v=21" defer></script>
+  <script src="app.js?v=22" defer></script>
 </body>
 </html>
