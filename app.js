@@ -133,9 +133,9 @@
     iiifBook: null, // { title, pages: [{ label, serviceId }], currentIndex }
   };
 
-  const APP_VERSION = "1.10.1";
+  const APP_VERSION = "1.11.0";
   const APP_RELEASE_SUMMARY =
-    "Lange ord blir ikke lenger bredere enn skjermen ved stor forstørrelse: siden kan leses uten sideveis skrolling helt ned til 320 px bredde, også på 350 % (WCAG 1.4.10 Reflow).";
+    "Sider med to spalter og oppslag med to sider deles nå automatisk i tekstblokker som leses i riktig rekkefølge, også håndskrevne manuskripter (eksempel fra Wellcome Collection i biblioteket). Biblioteket og standardvalgene ligger i config.js, så appen enkelt kan tilpasses egne samlinger og IIIF-kilder.";
 
   // Hurtigminne (RAM-cache) for ferdig nedlastede IIIF-boksider (URL -> HTMLImageElement)
   const pageImageCache = new Map();
@@ -339,10 +339,8 @@
     state.iiifBook = null;
     iiifBookBar.setAttribute("hidden", "");
 
-    state.cropRect =
-      kind === "synthetic-twocol"
-        ? { x: 55, y: 140, w: 410, h: 560 } // Forhåndsmarker spalte 1 på to-spalters demo!
-        : null;
+    // Spaltedemoen bruker nå automatisk spaltedeteksjon (detectTextBlocks), ikke et forhåndsvalgt utsnitt
+    state.cropRect = null;
     resetCropBtn.disabled = !state.cropRect;
 
     ingestCanvasSource();
@@ -667,23 +665,24 @@
     metaOverride = null
   ) {
     try {
-      statsBar.innerHTML = `<span class="stat-chip">Henter IIIF-sidemanifest fra Nasjonalbiblioteket...</span>`;
+      statsBar.innerHTML = `<span class="stat-chip">Henter IIIF-manifest...</span>`;
       const resp = await fetch(manifestUrl);
       if (!resp.ok) {
         statsBar.innerHTML = `
           <span class="stat-chip" style="color: var(--accent-warm)">
-            🔒 NB.no IIIF-server avslo tilgang til manifestet (HTTP ${resp.status}).
+            🔒 IIIF-serveren avslo tilgang til manifestet (HTTP ${resp.status}).
           </span>
         `;
         return;
       }
 
       const manifest = await resp.json();
-      const canvases = manifest?.sequences?.[0]?.canvases || [];
+      // IIIF Presentation 2 (sequences[0].canvases) eller 3 (items)
+      const canvases = manifest?.sequences?.[0]?.canvases || manifest?.items || [];
       if (canvases.length === 0) {
         statsBar.innerHTML = `
           <span class="stat-chip" style="color: var(--accent-warm)">
-            IIIF-manifestet inneholder ingen åpne bilde-canvases (tilgang begrenset av NB.no).
+            IIIF-manifestet inneholder ingen åpne bilde-canvases (tilgangen kan være begrenset).
           </span>
         `;
         return;
@@ -691,19 +690,28 @@
 
       const pages = canvases
         .map((c, idx) => {
-          const serviceId =
-            c?.images?.[0]?.resource?.service?.["@id"] ||
-            c?.images?.[0]?.resource?.["@id"];
-          const rawLabel = c?.label && c.label !== "-" ? `Side ${c.label}` : null;
-          const tailId = serviceId ? serviceId.split("_").pop() : String(idx + 1);
+          const img = extractCanvasImage(c);
+          if (!img) return null;
+          const labelText = iiifLabelText(c?.label);
+          const hasLabel = labelText && labelText !== "-";
+          if (img.isNb) {
+            // NB: sidenummeret står sist i bilde-ID-en (…_0011)
+            const tailId = img.serviceId ? img.serviceId.split("_").pop() : String(idx + 1);
+            return {
+              index: idx,
+              label: hasLabel ? `Side ${labelText} (${tailId})` : `Oppslag ${idx + 1} (${tailId})`,
+              tailId,
+              ...img,
+            };
+          }
           return {
             index: idx,
-            label: rawLabel ? `${rawLabel} (${tailId})` : `Oppslag ${idx + 1} (${tailId})`,
-            tailId,
-            serviceId,
+            label: hasLabel ? labelText : `Side ${idx + 1}`,
+            tailId: String(idx + 1),
+            ...img,
           };
         })
-        .filter((p) => Boolean(p.serviceId));
+        .filter((p) => p && (p.serviceId || p.imageUrl));
 
       // Velg startside: enten oppgitt pageSuffix, preferredPageIndex eller første tekstside
       let startIdx = 0;
@@ -724,13 +732,16 @@
 
       state.savedCropRatio = null;
       state.cropRect = null;
+      const rights = String(manifest.license || manifest.rights || "");
       state.iiifBook = {
-        title: metaOverride?.title || manifest.label || "IIIF Digitalbok",
+        title: metaOverride?.title || iiifLabelText(manifest.label) || "IIIF-dokument",
         accessText:
           metaOverride?.accessText ||
-          (manifest.license?.includes("public")
-            ? "Public Domain (NB.no)"
-            : "Levert via NB.no IIIF"),
+          (/public|publicdomain|mark\/1\.0|zero/i.test(rights)
+            ? "Public Domain (levert via IIIF)"
+            : rights
+              ? `Levert via IIIF (${rights})`
+              : "Levert via IIIF"),
         pages,
         currentIndex: startIdx,
       };
@@ -740,7 +751,7 @@
     } catch (err) {
       statsBar.innerHTML = `
         <span class="stat-chip" style="color: var(--accent-warm)">
-          Kunne ikke lese IIIF-manifest (${err.message}). Tilgangen styres av NB-serveren.
+          Kunne ikke lese IIIF-manifest (${err.message}). Sjekk at kilden tillater henting fra nettleseren (CORS).
         </span>
       `;
     }
@@ -776,11 +787,59 @@
   }
 
   function getIiifPageImageUrl(page) {
-    if (!page || !page.serviceId) return "";
+    if (!page) return "";
+    if (!page.serviceId) return page.imageUrl || "";
     const baseService = page.serviceId.replace(/\/$/, "");
     return baseService.endsWith(".jpg")
       ? baseService
-      : `${baseService}/full/1200,/0/native.jpg`;
+      : `${baseService}/full/1200,/0/${page.quality || "default"}.jpg`;
+  }
+
+  /**
+   * Tekst fra en IIIF-etikett: streng (v2), { "@value" } (v2) eller språkkart som
+   * { "en": ["…"], "none": ["…"] } (v3).
+   */
+  function iiifLabelText(label) {
+    if (!label) return "";
+    if (typeof label === "string") return label;
+    if (Array.isArray(label)) return label.map(iiifLabelText).filter(Boolean).join(" ");
+    if (typeof label === "object") {
+      if (label["@value"]) return String(label["@value"]);
+      for (const lang of ["nb", "no", "nn", "en", "none"]) {
+        if (Array.isArray(label[lang]) && label[lang].length) return label[lang].join(" ");
+      }
+      const first = Object.values(label)[0];
+      return Array.isArray(first) ? first.join(" ") : String(first || "");
+    }
+    return String(label);
+  }
+
+  /**
+   * Bildetjenesten for en canvas i IIIF Presentation 2 (images[0].resource) eller 3
+   * (items[0].items[0].body). Returnerer null når canvasen ikke har noe bilde.
+   */
+  function extractCanvasImage(canvas) {
+    let resource = canvas?.images?.[0]?.resource;
+    if (!resource) {
+      resource = canvas?.items?.[0]?.items?.[0]?.body;
+      if (resource && Array.isArray(resource.items)) resource = resource.items[0]; // Choice
+    }
+    if (!resource) return null;
+    let service = resource.service;
+    if (Array.isArray(service)) service = service[0];
+    const serviceId = service ? service["@id"] || service.id || null : null;
+    const imageUrl = resource["@id"] || resource.id || null;
+    const isNb = /(^|\.)nb\.no\//.test(serviceId || imageUrl || "");
+    const context = String(service?.["@context"] || "");
+    const profile = JSON.stringify(service?.profile || "");
+    // Image API 1.x (og NB) bruker «native.jpg»; 2.x og 3.x bruker «default.jpg»
+    const isImageApi1 = /\/image\/1\//.test(context) || profile.includes("library.stanford.edu");
+    return {
+      serviceId,
+      imageUrl,
+      quality: isNb || isImageApi1 ? "native" : "default",
+      isNb,
+    };
   }
 
   function prefetchAdjacentPages() {
@@ -1108,6 +1167,11 @@
     }
 
     if (countPaper > 20) {
+      // Rå papirlyshet (før skyggeutjevning) – brukes til å lyse opp originalutklippene så de
+      // smelter inn i bakgrunnen
+      state.rawPaperLum =
+        (0.299 * sumR + 0.587 * sumG + 0.114 * sumB) / countPaper;
+      state.rawPaperHex = `rgb(${Math.round(sumR / countPaper)}, ${Math.round(sumG / countPaper)}, ${Math.round(sumB / countPaper)})`;
       // Bland 82% målt papirfarge med 18% varm kremhvit (#faf6ed) så den alltid er behagelig og ren
       const r = Math.round((sumR / countPaper) * 0.82 + 250 * 0.18);
       const g = Math.round((sumG / countPaper) * 0.82 + 246 * 0.18);
@@ -1115,6 +1179,8 @@
       state.sampledPaperHex = `rgb(${r}, ${g}, ${b})`;
     } else {
       state.sampledPaperHex = "#f6efe0";
+      state.rawPaperLum = null;
+      state.rawPaperHex = null;
     }
     liquidReader.style.setProperty("--sampled-paper-bg", state.sampledPaperHex);
 
@@ -1283,33 +1349,29 @@
   /**
    * Hovedpipeline for å finne tekstlinjer og ord innenfor aktivt utsnitt (cropRect).
    */
-  function runSegmentationAndRender() {
-    if (!state.gray || !state.sourceImageData) return;
-
+  /**
+   * Segmenterer ett område av siden (regionRect, eller hele siden når den er null) i
+   * linjer og ord. Returnerer { lines, words, paragraphCount, hyphenJoinCount, medianLineHeight }.
+   */
+  function segmentRegion(regionRect, inkThreshold) {
     const fullW = sourceCanvas.width;
     const fullH = sourceCanvas.height;
-
-    // Effektiv blekk-terskel (piksler mørkere enn denne verdien regnes som blekk)
-    const inkThreshold = Math.max(
-      25,
-      Math.min(235, state.otsuThreshold + state.contrastOffset)
-    );
 
     let x0;
     let y0;
     let x1;
     let y1;
 
-    if (state.cropRect) {
-      x0 = Math.max(0, Math.min(fullW - 1, Math.round(state.cropRect.x)));
-      y0 = Math.max(0, Math.min(fullH - 1, Math.round(state.cropRect.y)));
+    if (regionRect) {
+      x0 = Math.max(0, Math.min(fullW - 1, Math.round(regionRect.x)));
+      y0 = Math.max(0, Math.min(fullH - 1, Math.round(regionRect.y)));
       x1 = Math.max(
         x0 + 1,
-        Math.min(fullW, Math.round(state.cropRect.x + state.cropRect.w))
+        Math.min(fullW, Math.round(regionRect.x + regionRect.w))
       );
       y1 = Math.max(
         y0 + 1,
-        Math.min(fullH, Math.round(state.cropRect.y + state.cropRect.h))
+        Math.min(fullH, Math.round(regionRect.y + regionRect.h))
       );
     } else {
       // Start helt ute ved 0 (så tett beskårne NB-sider der teksten starter 8 px fra kanten
@@ -1391,8 +1453,8 @@
     // For selve linjedeteksjonen (rowCounts) måler vi de indre 92 % av bredden dersom
     // brukeren ikke har valgt manuelt utsnitt, slik at eventuelle skygger/stempler
     // helt ute i margen aldri kan koble sammen to linjer!
-    const projX0 = state.cropRect ? x0 : Math.max(x0, Math.round(fullW * 0.035));
-    const projX1 = state.cropRect ? x1 : Math.min(x1, Math.round(fullW * 0.965));
+    const projX0 = regionRect ? x0 : Math.max(x0, Math.round(fullW * 0.035));
+    const projX1 = regionRect ? x1 : Math.min(x1, Math.round(fullW * 0.965));
     const rowCounts = new Float32Array(roiH);
     for (let r = 0; r < roiH; r++) {
       const rowOffset = (y0 + r) * fullW;
@@ -1527,6 +1589,85 @@
         continue;
       }
       validBands.push({ ...b });
+    }
+
+    // --- Reserve for håndskrift og tett sats: linjer fra linjeavstanden (autokorrelasjon) ---
+    // Mellom håndskrevne linjer blir radene aldri helt tomme (opp-/nedstreker, flekker), så
+    // båndene over smelter sammen til noen få, altfor høye bånd som forkastes. Da finnes
+    // linjeavstanden P med autokorrelasjon av radprofilen, og linjene deles i dalene
+    // (lokale minimum minst 0,6·P fra hverandre). Trykte sider treffer ikke denne reserven.
+    const tallInkRows = mergedBands
+      .filter((b) => b.bottom - b.top + 1 > maxAllowedBandH)
+      .reduce((sum, b) => sum + (b.bottom - b.top + 1), 0);
+    if (tallInkRows > roiH * 0.4) {
+      const pitchBands = bandsFromLinePitch();
+      if (pitchBands.length >= 2) {
+        validBands.length = 0;
+        validBands.push(...pitchBands);
+      }
+    }
+
+    function bandsFromLinePitch() {
+      // Glatt kraftig (±3 rader) før analyse
+      const prof = new Float32Array(roiH);
+      for (let r = 0; r < roiH; r++) {
+        let sum = 0;
+        let n = 0;
+        for (let k = -3; k <= 3; k++) {
+          const rr = r + k;
+          if (rr >= 0 && rr < roiH) {
+            sum += smoothRows[rr];
+            n++;
+          }
+        }
+        prof[r] = sum / n;
+      }
+      let mean = 0;
+      for (let r = 0; r < roiH; r++) mean += prof[r];
+      mean /= Math.max(1, roiH);
+      // Autokorrelasjon over plausible linjeavstander
+      const minLag = 12;
+      const maxLag = Math.min(160, Math.floor(roiH / 3));
+      let bestLag = 0;
+      let bestCorr = 0;
+      for (let lag = minLag; lag <= maxLag; lag++) {
+        let corr = 0;
+        for (let r = 0; r + lag < roiH; r++) {
+          corr += (prof[r] - mean) * (prof[r + lag] - mean);
+        }
+        corr /= roiH - lag;
+        if (corr > bestCorr) {
+          bestCorr = corr;
+          bestLag = lag;
+        }
+      }
+      if (bestLag === 0) return [];
+      // Lokale minimum (daler) med minst 0,6·P avstand
+      const halfWin = Math.max(3, Math.round(bestLag * 0.35));
+      const minima = [];
+      for (let r = 1; r < roiH - 1; r++) {
+        let isMin = true;
+        for (let k = -halfWin; k <= halfWin && isMin; k++) {
+          const rr = r + k;
+          if (rr >= 0 && rr < roiH && prof[rr] < prof[r]) isMin = false;
+        }
+        if (!isMin) continue;
+        if (minima.length && r - minima[minima.length - 1] < bestLag * 0.6) continue;
+        minima.push(r);
+      }
+      // Bånd mellom dalene (med tomme kanter i topp og bunn som første/siste grense)
+      const cuts = [0, ...minima, roiH - 1];
+      const bands = [];
+      for (let i = 0; i < cuts.length - 1; i++) {
+        const top = cuts[i] + (i === 0 ? 0 : 1);
+        const bottom = cuts[i + 1] - 1;
+        if (bottom - top + 1 < Math.max(6, bestLag * 0.4)) continue;
+        let ink = 0;
+        for (let r = top; r <= bottom; r++) ink += smoothRows[r];
+        if (ink / (bottom - top + 1) < minRowInk) continue;
+        bands.push({ top, bottom });
+      }
+      return bands;
     }
 
     // Beregn median linjehøyde og median linjeavstand (for å oppdage avsnittsskift!)
@@ -2373,11 +2514,315 @@
       }
     }
 
+    return {
+      lines,
+      words: allWords,
+      paragraphCount,
+      hyphenJoinCount,
+      medianLineHeight,
+    };
+  }
+
+  /**
+   * Finner tekstblokker (spalter, eller venstre/høyre side i et oppslag) med en vertikal
+   * projeksjon over hele siden. Skillestriper er enten mørke (bokrygg, svart bakgrunn,
+   * sidekant: > 45 % blekk) eller tomme (hvitt spaltemellomrom: nesten ikke blekk). Mørke
+   * rader i topp og bunn av hver blokk trimmes bort.
+   *
+   * Returnerer en liste med rektangler i lesrekkefølge (venstre mot høyre), eller null når
+   * siden bare har én tekstblokk; da segmenteres hele siden som før.
+   */
+  function detectTextBlocks(inkThreshold) {
+    const W = sourceCanvas.width;
+    const H = sourceCanvas.height;
+    const gray = state.gray;
+    if (!gray || W < 200 || H < 200) return null;
+
+    const yStart = Math.round(H * 0.04);
+    const yEnd = Math.round(H * 0.96);
+    let sampled = 0;
+    const colInk = new Uint32Array(W);
+    const rowInk = new Uint32Array(W);
+    // Rå papirlyshet per kolonne (skygge langs ryggen gjør selve papiret mørkere; det
+    // normaliserte gråtonebildet har jevnet ut slike skygger, så vi bruker de rå pikslene)
+    const rgba = state.sourceImageData?.data;
+    const colPaperSum = new Float64Array(W);
+    const colPaperCount = new Uint32Array(W);
+    for (let y = yStart; y < yEnd; y += 2) {
+      const off = y * W;
+      let rowDarkCount = 0;
+      for (let x = 0; x < W; x++) {
+        const ink = gray[off + x] < inkThreshold ? 1 : 0;
+        rowInk[x] = ink;
+        rowDarkCount += ink;
+      }
+      // Hopp over rader som i hovedsak er mørke (svart bakgrunn over/under et oppslag):
+      // de gir alle kolonner blekk og skjuler de tomme margene langs ryggen
+      if (rowDarkCount > W * 0.45) continue;
+      sampled++;
+      for (let x = 0; x < W; x++) {
+        colInk[x] += rowInk[x];
+        if (!rowInk[x] && rgba) {
+          const i = (off + x) * 4;
+          colPaperSum[x] += (rgba[i] * 77 + rgba[i + 1] * 150 + rgba[i + 2] * 29) >> 8;
+          colPaperCount[x]++;
+        }
+      }
+    }
+    if (sampled < 20) return null;
+    const dens = new Float32Array(W);
+    for (let x = 0; x < W; x++) dens[x] = colInk[x] / Math.max(1, sampled);
+
+    const positive = Array.from(dens).filter((d) => d > 0.002 && d < 0.45).sort((a, b) => a - b);
+    if (positive.length < W * 0.2) return null;
+    const medianTextDens = positive[Math.floor(positive.length / 2)];
+    const colPaper = new Float32Array(W);
+    for (let x = 0; x < W; x++) {
+      colPaper[x] = colPaperCount[x] > 0 ? colPaperSum[x] / colPaperCount[x] : 0;
+    }
+    const paperLevels = Array.from(colPaper).filter((v) => v > 0).sort((a, b) => a - b);
+    const medianPaper = paperLevels.length ? paperLevels[Math.floor(paperLevels.length / 2)] : 0;
+    // «Tom» er relativt til tekstens typiske tetthet: en hvit renne har under 15 % av den
+    const emptyLimit = Math.max(0.003, medianTextDens * 0.15);
+    const DARK = 0.45;
+
+    // Separatorkolonner (mørke eller tomme), og sammenhengende tekstløp mellom dem
+    // En renne må være tom gjennom hele høyden, så den kan være smal (ryggen i et oppslag
+    // er ofte bare ~8 px ved 1200 px bredde)
+    const minSepW = Math.max(6, Math.round(W * 0.006));
+    const isSep = (x) => dens[x] > DARK || dens[x] < emptyLimit;
+    const runs = [];
+    let x = 0;
+    while (x < W) {
+      if (isSep(x)) {
+        x++;
+        continue;
+      }
+      let start = x;
+      let end = x;
+      // Et tekstløp slutter først ved en separator som er minst minSepW bred
+      while (end < W) {
+        if (!isSep(end)) {
+          end++;
+          continue;
+        }
+        let sepEnd = end;
+        while (sepEnd < W && isSep(sepEnd)) sepEnd++;
+        if (sepEnd - end >= minSepW || sepEnd >= W) break;
+        end = sepEnd;
+      }
+      runs.push({ left: start, right: end - 1 });
+      x = end;
+    }
+
+    const minBlockW = Math.max(80, Math.round(W * 0.18));
+    const blocks = runs.filter((r) => r.right - r.left + 1 >= minBlockW);
+    if (blocks.length < 2) return null;
+
+    const columnRects = blocks.map((b) => {
+      // Trim skygge langs kantene (bokrygg, sidekant): kolonner der selve papiret er tydelig
+      // mørkere enn sidens papir, inntil 8 % av blokkbredden fra hver side. (Høy blekktetthet
+      // alene er ikke nok: venstremargen i justert sats er også tett.)
+      const maxTrim = Math.round((b.right - b.left + 1) * 0.08);
+      const maxLineTrim = Math.round((b.right - b.left + 1) * 0.04);
+      const isShadow = (xx) => medianPaper > 0 && colPaper[xx] > 0 && colPaper[xx] < medianPaper - 22;
+      // Skarp, mørk strek helt ytterst (sidekant, brett): svært høy blekktetthet
+      const isEdgeLine = (xx) => dens[xx] > Math.max(0.22, medianTextDens * 2.5);
+      let bl = b.left;
+      let br = b.right;
+      for (let x = b.left; x <= b.left + maxTrim; x++) {
+        if (isShadow(x) || (x <= b.left + maxLineTrim && isEdgeLine(x))) bl = x + 1;
+      }
+      for (let x = b.right; x >= b.right - maxTrim; x--) {
+        if (isShadow(x) || (x >= b.right - maxLineTrim && isEdgeLine(x))) br = x - 1;
+      }
+      // Utvid litt utover i tomme marger (ikke inn i mørke striper), så ordstarter og
+      // -slutter med lite blekk ikke kuttes
+      const maxGrow = Math.round(W * 0.025);
+      let left = bl;
+      let right = br;
+      if (bl === b.left) {
+        for (let k = 0; k < maxGrow && left > 0 && dens[left - 1] < emptyLimit; k++) left--;
+      }
+      if (br === b.right) {
+        for (let k = 0; k < maxGrow && right < W - 1 && dens[right + 1] < emptyLimit; k++) right++;
+      }
+      // Trim mørke rader (svart bakgrunn, kant) i topp og bunn av blokken
+      const rowDark = (y) => {
+        let dark = 0;
+        const off = y * W;
+        for (let xx = left; xx <= right; xx += 2) if (gray[off + xx] < inkThreshold) dark++;
+        return dark / Math.max(1, Math.ceil((right - left + 1) / 2));
+      };
+      let top = 0;
+      while (top < H - 1 && rowDark(top) > DARK) top++;
+      let bottom = H - 1;
+      while (bottom > top && rowDark(bottom) > DARK) bottom--;
+      const trim = Math.round(minSepW * 0.5);
+      top = Math.min(bottom, top + (top > 0 ? trim : 0));
+      bottom = Math.max(top, bottom - (bottom < H - 1 ? trim : 0));
+      return { x: left, y: top, w: right - left + 1, h: bottom - top + 1 };
+    });
+
+    // --- XY-cut, første nivå: rader som krysser spaltemellomrommet (overskrift, ingress) ---
+    // En rad «spenner over» spaltene når det er tydelig blekk i mellomrommet mellom to
+    // tekstblokker. Slike sammenhengende rader blir egne blokker i full bredde, og siden leses
+    // ovenfra: spennende blokk → spaltene under den (venstre mot høyre) → neste spennende blokk.
+    const gaps = [];
+    for (let i = 0; i < blocks.length - 1; i++) {
+      gaps.push([blocks[i].right + 1, blocks[i + 1].left - 1]);
+    }
+    const spans = new Uint8Array(H);
+    for (let y = 0; y < H; y++) {
+      const off = y * W;
+      for (const [gl, gr] of gaps) {
+        let ink = 0;
+        for (let gx = gl; gx <= gr; gx++) if (gray[off + gx] < inkThreshold) ink++;
+        if (ink >= Math.max(2, (gr - gl + 1) * 0.08)) {
+          spans[y] = 1;
+          break;
+        }
+      }
+    }
+    // Lukk små hull (mellom bokstavrader) og fjern korte løp (støv, enkeltstreker)
+    const minSpanH = Math.max(10, Math.round(H * 0.012));
+    const runsY = [];
+    for (let y = 0; y < H; ) {
+      if (!spans[y]) {
+        y++;
+        continue;
+      }
+      let end = y;
+      while (end < H) {
+        if (spans[end]) {
+          end++;
+          continue;
+        }
+        let gapEnd = end;
+        while (gapEnd < H && !spans[gapEnd] && gapEnd - end < 8) gapEnd++;
+        if (gapEnd < H && spans[gapEnd] && gapEnd - end < 8) {
+          end = gapEnd;
+          continue;
+        }
+        break;
+      }
+      if (end - y >= minSpanH) runsY.push([y, end - 1]);
+      y = end;
+    }
+    const pageTop = Math.min(...columnRects.map((r) => r.y));
+    const pageBottom = Math.max(...columnRects.map((r) => r.y + r.h - 1));
+    const spanRuns = runsY
+      .map(([a, b2]) => [Math.max(pageTop, a - 3), Math.min(pageBottom, b2 + 3)])
+      .filter(([a, b2]) => b2 - a + 1 >= minSpanH);
+    if (spanRuns.length === 0) return columnRects;
+    // Spenner hele siden over: da er det egentlig én spalte
+    const spanTotal = spanRuns.reduce((sum, [a, b2]) => sum + (b2 - a + 1), 0);
+    if (spanTotal > (pageBottom - pageTop + 1) * 0.6) return null;
+
+    const fullLeft = Math.min(...columnRects.map((r) => r.x));
+    const fullRight = Math.max(...columnRects.map((r) => r.x + r.w - 1));
+    const ordered = [];
+    let cursor = pageTop;
+    const pushColumns = (y0, y1) => {
+      if (y1 - y0 + 1 < minSpanH) return;
+      for (const r of columnRects) {
+        const top = Math.max(y0, r.y);
+        const bottom = Math.min(y1, r.y + r.h - 1);
+        if (bottom - top + 1 >= minSpanH) ordered.push({ x: r.x, y: top, w: r.w, h: bottom - top + 1 });
+      }
+    };
+    for (const [a, b2] of spanRuns) {
+      pushColumns(cursor, a - 1);
+      ordered.push({ x: fullLeft, y: a, w: fullRight - fullLeft + 1, h: b2 - a + 1 });
+      cursor = b2 + 1;
+    }
+    pushColumns(cursor, pageBottom);
+    return ordered.length >= 2 ? ordered : columnRects;
+  }
+
+  /**
+   * Papirfargen slik den faktisk vises i ordutklippene: 30-persentilen per fargekanal av rå
+   * piksler som ikke er blekk. Brukes til hvitbalanse av originalutklippene, så papiret blir
+   * hvitt og smelter inn i bakgrunnen (også på flekket papir og med skygge langs ryggen).
+   */
+  function measureCropPaperLum(words, inkThreshold) {
+    const data = state.sourceImageData?.data;
+    if (!data || words.length === 0) return null;
+    const W = sourceCanvas.width;
+    const gray = state.gray;
+    const rs = [];
+    const gs = [];
+    const bs = [];
+    const step = Math.max(2, Math.round(Math.sqrt(words.length / 40)) + 1);
+    for (const wd of words) {
+      for (let y = wd.y; y < wd.y + wd.h; y += step) {
+        const off = y * W;
+        for (let x = wd.x; x < wd.x + wd.w; x += step) {
+          const p = off + x;
+          if (gray[p] < inkThreshold + 15) continue;
+          const i = p * 4;
+          rs.push(data[i]);
+          gs.push(data[i + 1]);
+          bs.push(data[i + 2]);
+        }
+      }
+      if (rs.length > 60000) break;
+    }
+    if (rs.length < 50) return null;
+    const pct = (arr) => {
+      arr.sort((a, b) => a - b);
+      return arr[Math.floor(arr.length * 0.3)];
+    };
+    return { r: pct(rs), g: pct(gs), b: pct(bs) };
+  }
+
+  function runSegmentationAndRender() {
+    if (!state.gray || !state.sourceImageData) return;
+
+    // Effektiv blekk-terskel (piksler mørkere enn denne verdien regnes som blekk)
+    const inkThreshold = Math.max(
+      25,
+      Math.min(235, state.otsuThreshold + state.contrastOffset)
+    );
+
+    // Manuelt utsnitt går foran; ellers del siden i tekstblokker (spalter / oppslag)
+    const regions = state.cropRect ? [state.cropRect] : detectTextBlocks(inkThreshold) || [null];
+    state.detectedTextBlocks = regions.filter(Boolean);
+
+    const lines = [];
+    const words = [];
+    let paragraphCount = 0;
+    let hyphenJoinCount = 0;
+    let medianLineHeight = 24;
+    let bestLineCount = -1;
+    for (const region of regions) {
+      const r = segmentRegion(region, inkThreshold);
+      // Ny blokk (spalte/side) starter på ny linje i leseren som et nytt avsnitt
+      if (lines.length > 0 && r.lines.length > 0) r.lines[0].isParagraphStart = true;
+      for (const line of r.lines) {
+        line.lineIndex = lines.length;
+        for (const w of line.words) w.lineIndex = line.lineIndex;
+        lines.push(line);
+      }
+      words.push(...r.words);
+      paragraphCount += r.paragraphCount;
+      hyphenJoinCount += r.hyphenJoinCount;
+      if (r.lines.length > bestLineCount) {
+        bestLineCount = r.lines.length;
+        medianLineHeight = r.medianLineHeight;
+      }
+    }
+    // Unike ord-ID-er på tvers av blokkene
+    words.forEach((w, i) => {
+      w.id = i + 1;
+    });
+
     state.detectedParagraphCount = paragraphCount;
     state.detectedHyphenJoinCount = hyphenJoinCount;
     state.detectedLines = lines;
     state.medianLineHeight = medianLineHeight;
-    state.detectedWords = allWords;
+    state.detectedWords = words;
+    state.cropPaperRgb = measureCropPaperLum(words, inkThreshold);
 
     drawOverlayBoxes();
     renderLiquidWords(inkThreshold);
@@ -3305,9 +3750,17 @@
     liquidReader.style.setProperty("--orig-opacity", origOpacity.toFixed(2));
     const paletteBg = PALETTES[palette].bg;
     liquidReader.style.setProperty("--reader-bg", paletteBg || state.sampledPaperHex || "#f6efe0");
-    // Lys opp originalens papir mot hvitt, så det smelter inn i hvit/sepia/natt-bakgrunn
-    const paperLum = Math.max(120, state.paperMedianLum || 220);
-    liquidReader.style.setProperty("--orig-brightness", (248 / paperLum).toFixed(3));
+    // Hvitbalanse for originalutklippene: papirfargen målt i selve ordutklippene skaleres til
+    // hvitt per fargekanal (SVG-filteret #orig-paper-balance), og multipliseres så inn i
+    // bakgrunnen. Blekket beholder fargetonen.
+    const paper = state.cropPaperRgb || { r: 220, g: 210, b: 190 };
+    const slope = (v) => Math.min(2.5, 255 / Math.max(90, v)).toFixed(3);
+    const balance = document.getElementById("orig-paper-balance");
+    if (balance) {
+      balance.querySelector("feFuncR")?.setAttribute("slope", slope(paper.r));
+      balance.querySelector("feFuncG")?.setAttribute("slope", slope(paper.g));
+      balance.querySelector("feFuncB")?.setAttribute("slope", slope(paper.b));
+    }
     // Myk kant: inntil ca. 1,5 % av linjehøyden på skjermen (mer blir bare uskarpt)
     const blurPx = state.edgeSoftness * 0.015 * (state.medianLineHeight || 24) * state.scaleFactor;
     liquidReader.style.setProperty("--ink-blur", `${blurPx.toFixed(2)}px`);
@@ -3333,6 +3786,22 @@
     }
   }
 
+  function applyAppearanceValues(values) {
+    if (!values || typeof values !== "object") return;
+    const num = (v, lo, hi) => (typeof v === "number" && v >= lo && v <= hi ? v : null);
+    const scale = num(values.scale, 0.35, 3.5);
+    if (scale !== null) state.scaleFactor = scale;
+    const mix = num(values.cleanMix, 0, 1);
+    if (mix !== null) state.cleanMix = mix;
+    if (PALETTES[values.palette]) state.palette = values.palette;
+    const stroke = num(values.strokeOffset, -15, 18);
+    if (stroke !== null) state.strokeOffset = stroke;
+    const soft = num(values.edgeSoftness, 0, 1);
+    if (soft !== null) state.edgeSoftness = soft;
+    const gap = num(values.lineGap, 1, 2.4);
+    if (gap !== null) state.lineGapMultiplier = gap;
+  }
+
   function loadAppearanceSettings() {
     let saved = null;
     try {
@@ -3340,19 +3809,7 @@
     } catch (err) {
       saved = null;
     }
-    if (!saved || typeof saved !== "object") return;
-    const num = (v, lo, hi) => (typeof v === "number" && v >= lo && v <= hi ? v : null);
-    const scale = num(saved.scale, 0.35, 3.5);
-    if (scale !== null) state.scaleFactor = scale;
-    const mix = num(saved.cleanMix, 0, 1);
-    if (mix !== null) state.cleanMix = mix;
-    if (PALETTES[saved.palette]) state.palette = saved.palette;
-    const stroke = num(saved.strokeOffset, -15, 18);
-    if (stroke !== null) state.strokeOffset = stroke;
-    const soft = num(saved.edgeSoftness, 0, 1);
-    if (soft !== null) state.edgeSoftness = soft;
-    const gap = num(saved.lineGap, 1, 2.4);
-    if (gap !== null) state.lineGapMultiplier = gap;
+    applyAppearanceValues(saved);
   }
 
   function syncAppearanceControls() {
@@ -4092,7 +4549,133 @@
     });
   }
 
-  bindBookCards(document.getElementById("curated-book-grid"));
+  // --- BIBLIOTEK FRA config.js (window.PIXEL_REFLOW_CONFIG) ---
+  const APP_CONFIG = window.PIXEL_REFLOW_CONFIG || {};
+  const libraryItemsById = new Map();
+
+  /** Åpner et hylleelement fra config.js ut fra kildetypen (nbUrn | manifest | image | synthetic). */
+  function openLibraryItem(item, { showReader = true } = {}) {
+    const src = item?.source || {};
+    const resumeTitleEl = document.getElementById("resume-book-title");
+    if (resumeTitleEl) resumeTitleEl.textContent = item.title || "Valgt bok";
+    const startPage = typeof item.startPage === "number" ? item.startPage : null;
+    if (showReader) openReaderScreen();
+    if (src.nbUrn) {
+      iiifUrlInput.value = `https://urn.nb.no/${src.nbUrn}`;
+      handleIiifInput(src.nbUrn, startPage);
+    } else if (src.manifest) {
+      iiifUrlInput.value = src.manifest;
+      loadIiifManifestUrl(src.manifest, startPage);
+    } else if (src.image) {
+      iiifUrlInput.value = src.image;
+      state.iiifBook = null;
+      renderIiifBookNavigator();
+      loadExternalImageUrl(src.image, false);
+    } else if (src.synthetic) {
+      state.iiifBook = null;
+      renderIiifBookNavigator();
+      generateSyntheticScan(src.synthetic);
+    }
+  }
+
+  function createLibraryCard(item) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "book-card";
+    const cover = document.createElement("div");
+    cover.className = item.cover ? "book-cover" : "book-cover synthetic-cover";
+    if (item.cover) {
+      const img = document.createElement("img");
+      img.src = item.cover;
+      img.alt = "";
+      img.loading = "lazy";
+      cover.appendChild(img);
+    } else {
+      const glyph = document.createElement("span");
+      glyph.className = "cover-glyph";
+      glyph.textContent = item.glyph || "📖";
+      cover.appendChild(glyph);
+    }
+    if (item.tag) {
+      const tag = document.createElement("span");
+      tag.className = "book-tag";
+      tag.textContent = item.tag;
+      cover.appendChild(tag);
+    }
+    const body = document.createElement("div");
+    body.className = "book-card-body";
+    const h3 = document.createElement("h3");
+    h3.textContent = item.title || "Uten tittel";
+    body.appendChild(h3);
+    if (item.author) {
+      const author = document.createElement("p");
+      author.className = "book-author";
+      author.textContent = item.author;
+      body.appendChild(author);
+    }
+    if (item.note) {
+      const note = document.createElement("span");
+      note.className = "book-meta-note";
+      note.textContent = item.note;
+      body.appendChild(note);
+    }
+    btn.append(cover, body);
+    btn.addEventListener("click", () => openLibraryItem(item));
+    return btn;
+  }
+
+  function renderLibraryShelves() {
+    const host = document.getElementById("library-shelves");
+    if (!host) return;
+    host.innerHTML = "";
+    (APP_CONFIG.shelves || []).forEach((shelf, shelfIdx) => {
+      const section = document.createElement("section");
+      section.className = "library-section";
+      const headingId = `shelf-heading-${shelfIdx}`;
+      section.setAttribute("aria-labelledby", headingId);
+      const header = document.createElement("div");
+      header.className = "section-header-row";
+      const headWrap = document.createElement("div");
+      const h2 = document.createElement("h2");
+      h2.id = headingId;
+      h2.textContent = shelf.title || "Bøker";
+      headWrap.appendChild(h2);
+      if (shelf.hint) {
+        const hint = document.createElement("p");
+        hint.className = "panel-hint";
+        hint.textContent = shelf.hint;
+        headWrap.appendChild(hint);
+      }
+      header.appendChild(headWrap);
+      const grid = document.createElement("div");
+      grid.className = "book-grid";
+      (shelf.items || []).forEach((item) => {
+        if (item.id) libraryItemsById.set(item.id, item);
+        grid.appendChild(createLibraryCard(item));
+      });
+      section.append(header, grid);
+      host.appendChild(section);
+    });
+  }
+
+  function applyAppConfigTexts() {
+    const appTitle = APP_CONFIG.app?.title;
+    const appSubtitle = APP_CONFIG.app?.subtitle;
+    if (appTitle) {
+      const el = document.getElementById("app-title");
+      if (el) el.textContent = appTitle;
+      document.title = `${appTitle} — Bibliotek & leseflate uten OCR`;
+    }
+    if (appSubtitle) {
+      const el = document.getElementById("app-subtitle");
+      if (el) el.textContent = appSubtitle;
+    }
+    const searchSection = document.getElementById("nb-search-section");
+    if (searchSection && APP_CONFIG.nbSearch === false) searchSection.hidden = true;
+  }
+
+  applyAppConfigTexts();
+  renderLibraryShelves();
 
   // Søk direkte i Nasjonalbibliotekets åpne Public Domain-bøker
   if (nbSearchForm && nbSearchInput && nbSearchResults) {
@@ -4178,11 +4761,11 @@
       }
     } else {
       if (zenPageIndicator) {
-        zenPageIndicator.textContent = "Pixel-Liquid Mode";
+        zenPageIndicator.textContent = APP_CONFIG.app?.title || "Pixel-Liquid Mode";
       }
       if (bookTitleLabel) {
         const resumeTitleEl = document.getElementById("resume-book-title");
-        bookTitleLabel.textContent = resumeTitleEl?.textContent || "Pixel-Liquid Mode";
+        bookTitleLabel.textContent = resumeTitleEl?.textContent || APP_CONFIG.app?.title || "Pixel-Liquid Mode";
       }
       if (bookProgressLabel) {
         bookProgressLabel.textContent = `${state.detectedWords.length} ord • Trykk på siden for meny`;
@@ -4372,7 +4955,8 @@
 
   initUpdateNotification();
 
-  // Husk lesernes utseendevalg mellom besøk (bare i denne nettleseren)
+  // Standardutseende fra config.js, deretter lesernes egne lagrede valg (bare i denne nettleseren)
+  applyAppearanceValues(APP_CONFIG.appearance);
   loadAppearanceSettings();
   syncAppearanceControls();
   applyAppearanceVariables();
@@ -4388,7 +4972,12 @@
     };
   }
 
-  // Start med Knut Hamsuns Sult (1890) direkte fra Nasjonalbiblioteket IIIF
-  // (med automatisk fallback til innebygd 1890-skanning dersom man er offline)
-  handleIiifInput(HAMSUN_SULT_URN, HAMSUN_SULT_DEFAULT_PAGE_INDEX);
+  // Åpne startboken fra config.js i bakgrunnen (biblioteket vises først)
+  const startItem = APP_CONFIG.startItem ? libraryItemsById.get(APP_CONFIG.startItem) : null;
+  if (startItem) {
+    openLibraryItem(startItem, { showReader: false });
+  } else if (!("startItem" in APP_CONFIG)) {
+    // Uten config.js: Sult som før
+    handleIiifInput(HAMSUN_SULT_URN, HAMSUN_SULT_DEFAULT_PAGE_INDEX);
+  }
 })();

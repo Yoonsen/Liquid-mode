@@ -1,5 +1,5 @@
 {
-  "version": "1.10.1",
-  "updatedAt": "2026-11-28T11:55:00+01:00",
-  "summary": "Lange ord blir ikke lenger bredere enn skjermen ved stor forstørrelse: siden kan leses uten sideveis skrolling helt ned til 320 px bredde, også på 350 % (WCAG 1.4.10 Reflow)."
+  "version": "1.11.0",
+  "updatedAt": "2026-11-28T12:26:00+01:00",
+  "summary": "Sider med to spalter og oppslag med to sider deles nå automatisk i tekstblokker som leses i riktig rekkefølge, også håndskrevne manuskripter (eksempel fra Wellcome Collection i biblioteket). Biblioteket og standardvalgene ligger i config.js, så appen enkelt kan tilpasses egne samlinger og IIIF-kilder."
 }

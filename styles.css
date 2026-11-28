@@ -551,28 +551,28 @@ body[data-app-screen="reader"] #library-view {
   visibility: hidden;
 }
 
-/* Originalen: lys papiret opp mot hvitt og multipliser, så utklippet smelter inn i
-   bakgrunnen (ingen synlige rektangler) og bare blekket med litt struktur blir igjen. */
+/* Originalen: hvitbalanse per fargekanal (SVG-filteret #orig-paper-balance, stigningene settes
+   fra målt papirfarge i app.js) gjør papiret hvitt, og multiplisering lar det smelte inn i
+   bakgrunnen, så bare blekket med litt struktur blir igjen. */
 .liquid-reader.palette-paper .word-orig,
 .liquid-reader.palette-white .word-orig,
 .liquid-reader.palette-sepia .word-orig {
-  filter: brightness(var(--orig-brightness, 1.1));
+  filter: url(#orig-paper-balance);
   mix-blend-mode: multiply;
 }
 
-/* Hvit: helt grå, ellers blir det gulaktige papiret synlige rektangler */
+/* Hvit: helt grå blekk */
 .liquid-reader.palette-white .word-orig {
-  filter: grayscale(1) brightness(var(--orig-brightness, 1.1));
+  filter: url(#orig-paper-balance) grayscale(1);
 }
 
 .liquid-reader.palette-sepia .word-orig {
-  filter: grayscale(0.6) brightness(var(--orig-brightness, 1.1));
+  filter: url(#orig-paper-balance) grayscale(0.6);
 }
 
-/* Originalen i natt: grå, lys opp og inverter (papir → svart, blekk → lyst) med varm tone.
-   Uten grått blir gulaktig papir blått når det inverteres. */
+/* Natt: hvitbalanse, grå og inverter (papir → svart, blekk → lyst) med varm tone */
 .liquid-reader.palette-night .word-orig {
-  filter: grayscale(1) brightness(var(--orig-brightness, 1.1)) invert(1) sepia(0.2);
+  filter: url(#orig-paper-balance) grayscale(1) invert(1) sepia(0.2);
   mix-blend-mode: screen;
 }
 

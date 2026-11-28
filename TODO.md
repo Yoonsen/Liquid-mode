@@ -68,12 +68,23 @@ I stedet for tradisjonell panorering/zooming segmenterer appen tekstlinjer og en
 
 - [x] **v1.10.1 – WCAG 1.4.10 Reflow:** Ordbrikker får aldri bli bredere enn leseflaten (`max-width: 100%`, høyden følger sideforholdet). Bredden settes uavrundet, så høyden er eksakt h × skala (avrundet bredde ga opptil flere px feil i høyden på smale ord). Testet: ingen sideveis skrolling i 320 px bredde ved 100 % og 350 % (Sult s. 12, 15, 40).
 
+- [x] **v1.11.0 – Tilpassbar app, spalter og oppslag:**
+  - `config.js`: appnavn, startbok, standardutseende, NB-søk av/på og bokhyller (kilder: NB-URN, IIIF-manifest v2/v3, bilde, innebygd demo). Bibliotekssiden bygges fra konfigurasjonen.
+  - IIIF Presentation 3 og andre leverandører: språkkart-etiketter, `default.jpg` for Image API 2/3 (NB/Image API 1 beholder `native.jpg`).
+  - `detectTextBlocks`: vertikal projeksjon over siden (rader som i hovedsak er mørke hoppes over) finner tekstblokker skilt av tomme renner eller mørke striper; skygge (mørkere rått papir) og skarpe kantstreker trimmes; blokkene utvides litt i tomme marger. Første nivå av XY-cut: rader med blekk i spaltemellomrommet blir blokker i full bredde. `segmentRegion` kjøres per blokk, og linjene settes sammen i lesrekkefølge. Ingen av 23 testede NB-boksider deles.
+  - `bandsFromLinePitch`: når radene aldri blir tomme (håndskrift), finnes linjeavstanden med autokorrelasjon og linjene deles i dalene.
+  - Originalutklipp: hvitbalanse per fargekanal (SVG-filter) fra papirfargen målt i ordutklippene, så flekket/gulnet papir ikke gir synlige rektangler.
+  - Eksempel i biblioteket: Wellcome «Receipt Book, 18th century» (Public Domain Mark), oppslag med to håndskrevne sider.
+
 ### 🚧 Pågår
 _(Ingenting akkurat nå. Skriv mål, hva som er prøvd, testsider og neste steg her når du starter på noe.)_
 
 Mulig neste steg: behandle hvert avsnitt som én sammenhengende sekvens når grunnlinjen glattes (siste ord på linje N og første på N+1 som naboer), og se om det slår v1.9.0 på `D.measure()`.
 
 Kjente svakheter å se på:
+- Håndskrift med skrå/bøyde linjer gir fragmenter (linjer søkes vannrett i hele blokken). Mulig løsning: linjesøk i vertikale striper som kobles sammen, eller skjevhet per blokk.
+- XY-cut: overskrift over to spalter deles hvis ordmellomrommet i overskriften faller i spaltemellomrommet (f.eks. «Norsk Folkeblad»-demoen).
+- Orddeling sys ikke sammen på tvers av spalter/sider.
 - Stor initial (som «D» i Sult s. 12) blir delt over to linjer.
 - I `continuous-liquid-flow` får sammensydde ord fra kursiv småsats av og til et lite mellomrom før andre del (f.eks. «theater historie», bok …300044 s. 100).
 

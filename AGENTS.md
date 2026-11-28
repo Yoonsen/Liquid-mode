@@ -17,7 +17,8 @@ Kilder: egne bilder, utklippstavle, NB.no-URN-er og IIIF Presentation/Image-URLe
 
 | Fil | Innhold |
 |---|---|
-| `index.html` | All markup: bibliotek-visning, fullskjerms leser, paneler. Laster `styles.css?v=N` og `app.js?v=N`. |
+| `config.js` | **Lokal tilpasning:** appnavn, startbok, standardutseende, NB-søk av/på og bokhyllene. Start her for en egen variant. |
+| `index.html` | All markup: bibliotek-visning, fullskjerms leser, paneler. Laster `styles.css?v=N`, `config.js?v=N` og `app.js?v=N`. |
 | `styles.css` | All styling. |
 | `app.js` | All logikk i én IIFE (~4000 linjer), delt i nummererte seksjoner med `// ====` -overskrifter (se under). |
 | `version.json` | Versjon + oppdateringstekst; leses av appen for å vise «ny versjon»-banner. |
@@ -77,7 +78,34 @@ i en midlertidig mappe og server den på en annen port.
 
 Gode testsider (sideindeks, 0-basert): Sult (`URN:NBN:no-nb_digibok_2015051929001`) 12, 14, 15 (mørk høyre
 sidekant), 16, 40, 81 (underlengder som egen linje), 120; frakturboken `…2017112348049` 40, 60; kursiv
-småsats `…2006082300044` 12.
+småsats `…2006082300044` 12. Oppslag med to sider og håndskrift: Wellcome «Receipt Book» (hylla
+«Manuskripter»), side 4. To spalter: den innebygde «Norsk Folkeblad»-demoen. Ingen vanlige NB-boksider skal
+deles i flere blokker (`state.detectedTextBlocks` skal være tom).
+
+## Tilpasse appen (lokale varianter)
+
+Appen er laget for at en annen institusjon eller et forskningsprosjekt kan lage sin egen variant raskt,
+gjerne med egen AI-agent. Vanlige oppskrifter:
+
+- **Egen bokhylle / samling:** rediger `shelves` i `config.js`. Hvert element har `id`, `title`, `author`, `tag`,
+  `note`, valgfritt `cover` (bilde-URL) eller `glyph`, `startPage` (0-basert) og én `source`:
+  `{ nbUrn }`, `{ manifest }` (IIIF Presentation 2 eller 3), `{ image }` eller `{ synthetic }`.
+- **Annen IIIF-kilde (manuskripter, andre bibliotek):** legg inn manifest-URL-en som `source.manifest`.
+  Kilden må tillate henting fra nettleseren (CORS; sjekk med `curl -H 'Origin: http://localhost' -D - <url>`),
+  og lisensen må tillate bruken. Bildetjenester med Image API 1 og NB får `native.jpg`, andre `default.jpg`
+  (`extractCanvasImage` i `app.js`).
+- **Startbok og standardutseende:** `startItem` og `appearance` i `config.js` (lesernes lagrede valg går foran).
+- **Uten NB-søk:** `nbSearch: false`.
+- **Navn og undertittel:** `app.title` og `app.subtitle` (fanetittelen følger med).
+- **Nye fargevalg:** `PALETTES` i `app.js`, en `palette-btn` i `index.html` og `.palette-swatch-*` /
+  `.palette-*`-regler i `styles.css`.
+- **Spalter, oppslag og håndskrift:** `detectTextBlocks` (spalter/oppslag/XY-cut), `bandsFromLinePitch`
+  (reservemetode for linjer når radene aldri blir tomme, typisk håndskrift) og `segmentRegion` (linjer og ord
+  i én blokk) i `app.js`. Endringer her må prøves på både trykte NB-sider og materialet du tilpasser til,
+  se testsidene under «Kjøre og teste».
+
+Kjente begrensninger: håndskrift med skrå eller bøyde linjer gir fragmenter (linjene søkes vannrett);
+overskrifter over flere spalter deles hvis ordmellomrommet faller i spaltemellomrommet.
 
 ## Tekniske føringer (fra `TODO.md`)
 

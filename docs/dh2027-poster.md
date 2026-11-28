@@ -11,7 +11,7 @@
 2. Old Algorithms, New Layout Engine: OCR-free Reflow of IIIF Page Images in the Browser
 3. Read the Pixels, Not the Text: An Agent-Adaptable Reflow Reader for Digitised Heritage
 
-## Abstract (≈ 644 ord)
+## Abstract (≈ 763 ord)
 
 Digitised books, newspapers and manuscripts are mostly published as page images, for example
 through IIIF. On a phone, reading such a page means pinching and scrolling sideways line by line.
@@ -32,12 +32,17 @@ much as Breuel et al. did with word images in "Paper to PDA" two decades ago. Wo
 grow wider than the screen, so a page stays free of horizontal scrolling at 320 pixels even at
 350 % magnification. Hyphenated words
 are detected geometrically, including double blackletter hyphens, and stitched back together
-across line breaks. Because nothing is transcribed, nothing can be mistranscribed: the reader
-always sees the original glyphs.
+across line breaks. Before lines are sought, the page is split into text blocks with a first level
+of XY-cut: empty gutters and dark strips (spine, background) separate columns or the two pages of
+an opening, and rows that cross a gutter, such as headlines, become full-width blocks. Where
+handwriting leaves no empty rows between lines, the line pitch is found by autocorrelation of the
+row profile. Because nothing is transcribed, nothing can be mistranscribed: the reader always sees
+the original glyphs.
 
 The tool runs entirely client-side as static HTML, CSS and JavaScript, with no build step and no
-server. It loads IIIF Image and Presentation resources directly, including the public-domain
-collections of the National Library of Norway. A single slider moves from the original page
+server. It loads IIIF Image and Presentation resources (versions 2 and 3) directly, including the
+public-domain collections of the National Library of Norway and, as an example of another
+provider, an eighteenth-century manuscript receipt book from Wellcome Collection. A single slider moves from the original page
 image to cleaned, recoloured text, with presets for low-vision reading (large size, night mode,
 adjustable stroke weight). We address two groups with the same underlying need: readers with low
 vision, and sighted readers who simply want to avoid horizontal scrolling on mobile devices.
@@ -53,7 +58,9 @@ Our second contribution concerns the code rather than the algorithm. The reposit
 to be **adapted by a researcher's own AI coding agent**. A single, tool-neutral instruction file
 (AGENTS.md, imported by tool-specific files) describes the architecture, test pages, release
 routine and a hand-over protocol for work interrupted mid-task. Console debugging helpers and
-before/after measurements let an agent verify its own changes. The current version was itself
+before/after measurements let an agent verify its own changes. Everything a local variant usually
+changes – name, default appearance, and the shelves of books and manuscripts with their IIIF
+sources – lives in one plain configuration file. The current version was itself
 developed this way in five days, and its commit history documents each step. We argue that such
 "agent-ready" repositories lower the threshold for local adaptation of DH tools. Examples are a
 manuscript collection with a different IIIF provider, right-to-left scripts, or a project's own
@@ -61,9 +68,9 @@ page layouts. This happens without forking a large codebase or waiting for its m
 
 The poster will show the pipeline, before/after comparisons on blackletter and antiqua pages, a
 live demo on a phone, and a timed example of an agent adapting the reader to a manuscript
-collection. Next steps are column and block detection (XY-cut) for newspapers and two-column
-scholarly PDFs, where formulas and figures can be kept as image tiles instead of being garbled
-by text extraction.
+collection. Next steps are deeper layout analysis for newspapers and two-column scholarly PDFs,
+where formulas and figures can be kept as image tiles instead of being garbled by text
+extraction, and line finding that follows slanted and curved handwritten lines.
 
 **Keywords:** document image reflow, IIIF, accessibility, WCAG, low vision, OCR-free, research software,
 AI coding agents

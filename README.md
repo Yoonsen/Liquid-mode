@@ -21,6 +21,14 @@ I stedet for å tolke bokstaver med feilbarlig OCR (som ofte sliter med fraktur,
 - **Spalte- og utsnittsvelger:** Dra en boks over én enkelt spalte eller et avsnitt i flerspaltede aviser og bøker.
 - **Egne bilder & utklippstavle:** Last opp bilde fra mobil/PC eller lim inn et skjermbilde direkte med `Ctrl+V` / `⌘V`.
 
+## Tilpass til egen samling
+
+All lokal tilpasning (navn, startbok, standardutseende og bokhyllene) ligger i [`config.js`](config.js).
+En hylle kan inneholde NB-bøker (URN), IIIF-manifester fra andre institusjoner (Presentation 2 og 3),
+enkeltbilder og innebygde testsider. Sider med flere spalter og oppslag med to sider deles automatisk i
+tekstblokker. Se [`AGENTS.md`](AGENTS.md) for oppskrifter – også for deg som lar en AI-agent gjøre
+tilpasningen.
+
 ## Kjøre lokalt
 
 Åpne via en enkel lokal statisk webserver:

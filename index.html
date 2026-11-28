@@ -8,9 +8,19 @@
   <title>Pixel-Liquid Mode — Bibliotek &amp; Leseflate uten OCR</title>
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
   <link rel="apple-touch-icon" href="favicon.svg" />
-  <link rel="stylesheet" href="styles.css?v=23" />
+  <link rel="stylesheet" href="styles.css?v=24" />
 </head>
 <body data-app-screen="library">
+  <!-- Hvitbalanse for originalutklipp (stigningene settes fra app.js ut fra målt papirfarge) -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+    <filter id="orig-paper-balance" color-interpolation-filters="sRGB">
+      <feComponentTransfer>
+        <feFuncR type="linear" slope="1.15" />
+        <feFuncG type="linear" slope="1.2" />
+        <feFuncB type="linear" slope="1.3" />
+      </feComponentTransfer>
+    </filter>
+  </svg>
   <!-- OPPDATERINGSVARSEL (varsler når ny versjon er rullet ut på GitHub Pages) -->
   <div id="update-banner" class="update-banner" role="status" aria-live="polite" hidden>
     <div class="update-banner-text">
@@ -35,10 +45,10 @@
         </div>
         <div>
           <div class="title-with-version">
-            <h1>Pixel-Liquid Mode</h1>
+            <h1 id="app-title">Pixel-Liquid Mode</h1>
             <span id="app-version-badge" class="version-pill" title="Installert versjon">v1.7.3</span>
           </div>
-          <p class="subtitle">Universell leseflyt på pikselnivå — helt uten OCR</p>
+          <p class="subtitle" id="app-subtitle">Universell leseflyt på pikselnivå — helt uten OCR</p>
         </div>
       </div>
 
@@ -81,7 +91,7 @@
       </section>
 
       <!-- SØK DIREKTE I NASJONALBIBLIOTEKETS ÅPNE IIIF-BØKER -->
-      <section class="library-section" aria-labelledby="nb-search-heading">
+      <section class="library-section" id="nb-search-section" aria-labelledby="nb-search-heading">
         <div class="section-header-row">
           <div>
             <h2 id="nb-search-heading">🔎 Søk i Nasjonalbiblioteket (Fritt tilgjengelige bøker)</h2>
@@ -101,113 +111,10 @@
         <div id="nb-search-results" class="book-grid" hidden aria-live="polite"></div>
       </section>
 
-      <!-- KURATERT BOKHYLLE -->
-      <section class="library-section" aria-labelledby="shelf-heading">
-        <div class="section-header-row">
-          <div>
-            <h2 id="shelf-heading">📚 Utvalgte bøker &amp; testsider</h2>
-            <p class="panel-hint">Trykk på en bok for å åpne den i fullskjerms Liquid-leser.</p>
-          </div>
-        </div>
+      <!-- BOKHYLLER: bygges fra config.js (window.PIXEL_REFLOW_CONFIG.shelves) -->
+      <div id="library-shelves"></div>
 
-        <div class="book-grid" id="curated-book-grid">
-          <button type="button" class="book-card" data-urn="URN:NBN:no-nb_digibok_2015051929001" data-page="12">
-            <div class="book-cover">
-              <img src="https://www.nb.no/services/image/resolver/URN:NBN:no-nb_digibok_2015051929001_0007/full/0,220/0/native.jpg" alt="" loading="lazy" />
-              <span class="book-tag">IIIF • 1890</span>
-            </div>
-            <div class="book-card-body">
-              <h3>Sult</h3>
-              <p class="book-author">Knut Hamsun</p>
-              <span class="book-meta-note">Førsteutgave, København 1890 (353 s.)</span>
-            </div>
-          </button>
-
-          <button type="button" class="book-card" data-urn="URN:NBN:no-nb_digibok_2013082608001" data-page="8">
-            <div class="book-cover">
-              <img src="https://www.nb.no/services/image/resolver/URN:NBN:no-nb_digibok_2013082608001_0005/full/0,220/0/native.jpg" alt="" loading="lazy" />
-              <span class="book-tag">IIIF • 1885</span>
-            </div>
-            <div class="book-card-body">
-              <h3>Constance Ring</h3>
-              <p class="book-author">Amalie Skram</p>
-              <span class="book-meta-note">Roman, Kristiania 1885 (519 s.)</span>
-            </div>
-          </button>
-
-          <button type="button" class="book-card" data-urn="URN:NBN:no-nb_digibok_2009042312002" data-page="10">
-            <div class="book-cover">
-              <img src="https://www.nb.no/services/image/resolver/URN:NBN:no-nb_digibok_2009042312002_0007/full/0,220/0/native.jpg" alt="" loading="lazy" />
-              <span class="book-tag">IIIF • 1899</span>
-            </div>
-            <div class="book-card-body">
-              <h3>Sommer : smaa fortællinger</h3>
-              <p class="book-author">Amalie Skram</p>
-              <span class="book-meta-note">København 1899 (165 s.)</span>
-            </div>
-          </button>
-
-          <button type="button" class="book-card" data-urn="URN:NBN:no-nb_digibok_2006082300044" data-page="12">
-            <div class="book-cover">
-              <img src="https://www.nb.no/services/image/resolver/URN:NBN:no-nb_digibok_2006082300044_0005/full/0,220/0/native.jpg" alt="" loading="lazy" />
-              <span class="book-tag">IIIF • 1892</span>
-            </div>
-            <div class="book-card-body">
-              <h3>Henrik Ibsen og hans Værker</h3>
-              <p class="book-author">Henrik Jæger</p>
-              <span class="book-meta-note">København 1892 (473 s.)</span>
-            </div>
-          </button>
-
-          <button type="button" class="book-card" data-urn="URN:NBN:no-nb_digibok_2017112348049" data-page="10">
-            <div class="book-cover">
-              <img src="https://www.nb.no/services/image/resolver/URN:NBN:no-nb_digibok_2017112348049_0003/full/0,220/0/native.jpg" alt="" loading="lazy" />
-              <span class="book-tag">Fraktur • 1869</span>
-            </div>
-            <div class="book-card-body">
-              <h3>Norsk Landmandsbog</h3>
-              <p class="book-author">P. Chr. Asbjørnsen</p>
-              <span class="book-meta-note">Gotisk fraktursats, 1869 (213 s.)</span>
-            </div>
-          </button>
-
-          <button type="button" class="book-card" data-synthetic="synthetic-gothic">
-            <div class="book-cover synthetic-cover">
-              <span class="cover-glyph">𝔉</span>
-              <span class="book-tag">Offline Demo</span>
-            </div>
-            <div class="book-card-body">
-              <h3>Christiania Intelligentssedler</h3>
-              <p class="book-author">1890 Avissats (Innebygd)</p>
-              <span class="book-meta-note">Testside med papirtekstur</span>
-            </div>
-          </button>
-
-          <button type="button" class="book-card" data-synthetic="synthetic-mobile">
-            <div class="book-cover synthetic-cover">
-              <span class="cover-glyph">📱</span>
-              <span class="book-tag">Offline Demo</span>
-            </div>
-            <div class="book-card-body">
-              <h3>Småskrift-skjermbilde / Brev</h3>
-              <p class="book-author">Mobil-eksempel (Innebygd)</p>
-              <span class="book-meta-note">Test av tett dokument på liten flate</span>
-            </div>
-          </button>
-
-          <button type="button" class="book-card" data-synthetic="synthetic-twocol">
-            <div class="book-cover synthetic-cover">
-              <span class="cover-glyph">📰</span>
-              <span class="book-tag">Spalte-demo</span>
-            </div>
-            <div class="book-card-body">
-              <h3>Norsk Folkeblad (To spalter)</h3>
-              <p class="book-author">Spaltemarkering (Innebygd)</p>
-              <span class="book-meta-note">Test av utsnittsboks på to spalter</span>
-            </div>
-          </button>
-        </div>
-
+      <section class="library-section" hidden>
         <!-- Skjult select for bakoverkompatibilitet -->
         <select id="preset-select" hidden>
           <option value="nb-hamsun-sult">Sult</option>
@@ -513,6 +420,7 @@
     <button type="button" id="zen-split-btn" hidden></button>
   </div>
 
-  <script src="app.js?v=23" defer></script>
+  <script src="config.js?v=24" defer></script>
+  <script src="app.js?v=24" defer></script>
 </body>
 </html>
