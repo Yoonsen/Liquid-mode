@@ -8,7 +8,7 @@
   <title>Pixel-Liquid Mode — Bibliotek &amp; Leseflate uten OCR</title>
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
   <link rel="apple-touch-icon" href="favicon.svg" />
-  <link rel="stylesheet" href="styles.css?v=24" />
+  <link rel="stylesheet" href="styles.css?v=25" />
 </head>
 <body data-app-screen="library">
   <!-- Hvitbalanse for originalutklipp (stigningene settes fra app.js ut fra målt papirfarge) -->
@@ -94,8 +94,8 @@
       <section class="library-section" id="nb-search-section" aria-labelledby="nb-search-heading">
         <div class="section-header-row">
           <div>
-            <h2 id="nb-search-heading">🔎 Søk i Nasjonalbiblioteket (Fritt tilgjengelige bøker)</h2>
-            <p class="panel-hint">Søker direkte i NB.no etter Public Domain-bøker som kan strømmes via IIIF.</p>
+            <h2 id="nb-search-heading">🔎 Søk i Nasjonalbiblioteket (fritt tilgjengelige bøker og Bokhylla)</h2>
+            <p class="panel-hint">Søker i NB.no etter bøker som kan leses via IIIF: fritt tilgjengelige bøker, og Bokhylla-bøker som kan leses fra norske IP-adresser.</p>
           </div>
           <form id="nb-search-form" class="nb-search-form">
             <input
@@ -150,7 +150,7 @@
       <button type="button" id="next-page-btn" class="hud-pill-btn">Neste →</button>
     </div>
 
-    <!-- SKUFF / POPOVER FOR "Aa Utseende": størrelse, original ↔ renset, farger, strek, kant, linjeavstand; resten under «Avansert» -->
+    <!-- SKUFF / POPOVER FOR "Aa Utseende": størrelse, original ↔ renset, farger, strek, kant, linjeavstand; resten under «Flere valg» -->
     <aside id="aa-settings-sheet" class="aa-settings-sheet" hidden aria-label="Utseende og skriftinnstillinger">
       <div class="sheet-header">
         <div class="sheet-title-group">
@@ -230,7 +230,7 @@
       <details class="aa-advanced-details" id="aa-advanced-details">
         <summary class="aa-advanced-summary">
           <span class="disclosure-chevron" aria-hidden="true">▸</span>
-          <strong>Avansert</strong>
+          <strong>Flere valg</strong>
           <span class="aa-advanced-hint">Linjebryting, ordskille, tracing</span>
         </summary>
 
@@ -420,7 +420,7 @@
     <button type="button" id="zen-split-btn" hidden></button>
   </div>
 
-  <script src="config.js?v=24" defer></script>
-  <script src="app.js?v=24" defer></script>
+  <script src="config.js?v=25" defer></script>
+  <script src="app.js?v=25" defer></script>
 </body>
 </html>

@@ -133,9 +133,9 @@
     iiifBook: null, // { title, pages: [{ label, serviceId }], currentIndex }
   };
 
-  const APP_VERSION = "1.11.0";
+  const APP_VERSION = "1.11.1";
   const APP_RELEASE_SUMMARY =
-    "Sider med to spalter og oppslag med to sider deles nå automatisk i tekstblokker som leses i riktig rekkefølge, også håndskrevne manuskripter (eksempel fra Wellcome Collection i biblioteket). Biblioteket og standardvalgene ligger i config.js, så appen enkelt kan tilpasses egne samlinger og IIIF-kilder.";
+    "Søket i Nasjonalbiblioteket tar nå også med Bokhylla-bøker (kan leses fra norske IP-adresser), i tillegg til fritt tilgjengelige bøker. Søkeresultatene er merket «Fri» eller «Bokhylla».";
 
   // Hurtigminne (RAM-cache) for ferdig nedlastede IIIF-boksider (URL -> HTMLImageElement)
   const pageImageCache = new Map();
@@ -147,6 +147,9 @@
   // =========================================================================
 
   const HAMSUN_SULT_URN = "URN:NBN:no-nb_digibok_2015051929001";
+  // Søket i NB tar med fritt tilgjengelige bøker (publicdomain, public) og Bokhylla (norsk IP).
+  // Tilgangen avgjøres uansett av NB sine servere; bøker som bare kan leses på NB holdes utenfor.
+  const NB_OPEN_CONTENT_FILTER = encodeURIComponent("contentClasses:(publicdomain OR public OR bokhylla)");
   const HAMSUN_SULT_DEFAULT_PAGE_INDEX = 12; // _0011 (Første kapittel: "Det var i den Tid, jeg gik omkring og sulted i Kristiania...")
 
   /**
@@ -636,7 +639,11 @@
           title: [title, creators, issued ? `(${issued})` : ""].filter(Boolean).join(" — "),
           accessText: access.isPublicDomain
             ? "Fritt tilgjengelig / Public Domain (NB.no)"
-            : `Tilgang: ${access.accessAllowedFrom || "NB.no"} (${access.license || ""})`,
+            : access.accessAllowedFrom === "NORWAY"
+              ? "Bokhylla (NB.no) – kan leses fra norske IP-adresser"
+              : access.accessAllowedFrom === "EVERYWHERE"
+                ? "Fritt tilgjengelig (NB.no)"
+                : `Tilgang: ${access.accessAllowedFrom || "NB.no"} (${access.license || ""})`,
         };
         await loadIiifManifestUrl(
           manifestUrl,
@@ -4690,13 +4697,16 @@
       try {
         const url = `https://api.nb.no/catalog/v1/items?q=${encodeURIComponent(
           q
-        )}&filter=contentClasses:publicdomain&filter=mediatype:b%C3%B8ker&size=8`;
+        )}&filter=${NB_OPEN_CONTENT_FILTER}&filter=mediatype:b%C3%B8ker&size=12`;
         const resp = await fetch(url);
         const data = await resp.json();
-        const items = data?._embedded?.items || [];
+        // Bare bøker som kan vises utenfor NB sine lokaler (fritt eller Bokhylla med norsk IP)
+        const items = (data?._embedded?.items || []).filter(
+          (it) => it?.accessInfo?.accessAllowedFrom !== "NB"
+        );
 
         if (items.length === 0) {
-          nbSearchResults.innerHTML = `<p class="panel-hint">Ingen fritt tilgjengelige (Public Domain) bøker funnet for «${q}».</p>`;
+          nbSearchResults.innerHTML = `<p class="panel-hint">Ingen fritt tilgjengelige bøker eller Bokhylla-bøker funnet for «${q}».</p>`;
           return;
         }
 
@@ -4729,6 +4739,17 @@
               <span class="book-meta-note"></span>
             </div>
           `;
+          const accessFrom = it.accessInfo?.accessAllowedFrom;
+          btn.querySelector(".book-tag").textContent = [
+            accessFrom === "NORWAY" ? "Bokhylla" : "Fri",
+            year,
+          ]
+            .filter(Boolean)
+            .join(" • ");
+          btn.title =
+            accessFrom === "NORWAY"
+              ? "Bokhylla: kan leses fra norske IP-adresser"
+              : "Fritt tilgjengelig";
           btn.querySelector("h3").textContent = title;
           btn.querySelector(".book-author").textContent = author;
           btn.querySelector(".book-meta-note").textContent = [year, pages]

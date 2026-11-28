@@ -64,7 +64,7 @@ I stedet for tradisjonell panorering/zooming segmenterer appen tekstlinjer og en
 
 - [x] **v1.9.0 – Utklipp etter målt grunnlinje:** Grunnlinjen (underkanten av x-høyden, persentilmetoden) måles i overlappende vinduer på ~4 linjehøyder langs hver linje; avvikende vinduer forkastes, og en lokal vektet rett linje gir grunnlinje og helning per ord. Utklippene legges etter denne i stedet for ordets eget blekktyngdepunkt (som er reserve). Målt med `D.measure()` på 17 sider i fem bøker: ordpar med ≥ 3 px avvik ved linjeskift 18,4 % → 10,9 % (innenfor linjene uendret ~14 %, som er målestøyen). Inspektørens stiplede kurve viser nå selve grunnlinjen.
 
-- [x] **v1.10.0 – Forenklet Aa-meny:** Tekststørrelse, én glider «Boksiden ↔ Renset tekst», fire fargevalg (Papir/Hvit/Sepia/Natt), strektykkelse, kant skarp ↔ myk og linjeavstand. Linjebryting, ordskille og LAB under «Avansert». Hvert ord er to canvas oppå hverandre (`.word-orig` + `.word-ink`); glideren og kantmykheten er bare CSS-variabler (`--orig-opacity`, `--ink-opacity`, `--ink-blur`) og reagerer umiddelbart. Originalen lyses opp og multipliseres (natt: grå + invertert + screen), så utklippene smelter inn i bakgrunnen. Valgene lagres i `localStorage` (`pixel_liquid_appearance`).
+- [x] **v1.10.0 – Forenklet Aa-meny:** Tekststørrelse, én glider «Boksiden ↔ Renset tekst», fire fargevalg (Papir/Hvit/Sepia/Natt), strektykkelse, kant skarp ↔ myk og linjeavstand. Linjebryting, ordskille og LAB under «Flere valg». Hvert ord er to canvas oppå hverandre (`.word-orig` + `.word-ink`); glideren og kantmykheten er bare CSS-variabler (`--orig-opacity`, `--ink-opacity`, `--ink-blur`) og reagerer umiddelbart. Originalen lyses opp og multipliseres (natt: grå + invertert + screen), så utklippene smelter inn i bakgrunnen. Valgene lagres i `localStorage` (`pixel_liquid_appearance`).
 
 - [x] **v1.10.1 – WCAG 1.4.10 Reflow:** Ordbrikker får aldri bli bredere enn leseflaten (`max-width: 100%`, høyden følger sideforholdet). Bredden settes uavrundet, så høyden er eksakt h × skala (avrundet bredde ga opptil flere px feil i høyden på smale ord). Testet: ingen sideveis skrolling i 320 px bredde ved 100 % og 350 % (Sult s. 12, 15, 40).
 
@@ -75,6 +75,8 @@ I stedet for tradisjonell panorering/zooming segmenterer appen tekstlinjer og en
   - `bandsFromLinePitch`: når radene aldri blir tomme (håndskrift), finnes linjeavstanden med autokorrelasjon og linjene deles i dalene.
   - Originalutklipp: hvitbalanse per fargekanal (SVG-filter) fra papirfargen målt i ordutklippene, så flekket/gulnet papir ikke gir synlige rektangler.
   - Eksempel i biblioteket: Wellcome «Receipt Book, 18th century» (Public Domain Mark), oppslag med to håndskrevne sider.
+
+- [x] **v1.11.1 – NB-søk med Bokhylla:** søket bruker `contentClasses:(publicdomain OR public OR bokhylla)`; treff som bare kan leses på NB (`accessAllowedFrom: NB`) filtreres bort, og resultatene merkes «Fri» / «Bokhylla». Tilgangen avgjøres uansett av NB sine servere.
 
 ### 🚧 Pågår
 _(Ingenting akkurat nå. Skriv mål, hva som er prøvd, testsider og neste steg her når du starter på noe.)_
