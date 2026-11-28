@@ -1,5 +1,5 @@
 {
-  "version": "1.10.0",
-  "updatedAt": "2026-11-28T11:19:00+01:00",
-  "summary": "Enklere Aa-meny: én glider fra boksidens originale utklipp til renset tekst (midt imellom får du papirpreg med skarpt blekk), fire fargevalg (Papir, Hvit, Sepia, Natt), strektykkelse og kant fra skarp til myk. Linjebryting, ordskille og tracing ligger under «Avansert», og valgene huskes til neste gang."
+  "version": "1.10.1",
+  "updatedAt": "2026-11-28T11:55:00+01:00",
+  "summary": "Lange ord blir ikke lenger bredere enn skjermen ved stor forstørrelse: siden kan leses uten sideveis skrolling helt ned til 320 px bredde, også på 350 % (WCAG 1.4.10 Reflow)."
 }

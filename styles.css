@@ -519,9 +519,22 @@ body[data-app-screen="reader"] #library-view {
 
 /* Hvert ord har to lag oppå hverandre: originalt utklipp og renset tekst.
    Glideren «Boksiden ↔ Renset tekst» styrer bare gjennomsiktigheten. */
+/* WCAG 1.4.10 Reflow: ingen ordbrikke får bli bredere enn leseflaten (ingen sideveis
+   skrolling ved 320 px og stor forstørrelse). Bredere ord skaleres ned proporsjonalt. */
+.word-token {
+  max-width: 100%;
+}
+
 .word-stack {
   position: relative;
   display: block;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.word-stack canvas {
+  max-width: 100%;
+  height: auto;
 }
 
 .word-stack .word-orig {

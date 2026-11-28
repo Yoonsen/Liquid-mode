@@ -133,9 +133,9 @@
     iiifBook: null, // { title, pages: [{ label, serviceId }], currentIndex }
   };
 
-  const APP_VERSION = "1.10.0";
+  const APP_VERSION = "1.10.1";
   const APP_RELEASE_SUMMARY =
-    "Enklere Aa-meny: én glider fra boksidens originale utklipp til renset tekst (midt imellom får du papirpreg med skarpt blekk), fire fargevalg (Papir, Hvit, Sepia, Natt), strektykkelse og kant fra skarp til myk. Linjebryting, ordskille og tracing ligger under «Avansert», og valgene huskes til neste gang.";
+    "Lange ord blir ikke lenger bredere enn skjermen ved stor forstørrelse: siden kan leses uten sideveis skrolling helt ned til 320 px bredde, også på 350 % (WCAG 1.4.10 Reflow).";
 
   // Hurtigminne (RAM-cache) for ferdig nedlastede IIIF-boksider (URL -> HTMLImageElement)
   const pageImageCache = new Map();
@@ -3085,15 +3085,17 @@
   function createWordStack(word, inkThreshold) {
     const stack = document.createElement("span");
     stack.className = "word-stack";
-    const cssW = `${Math.round(word.w * state.scaleFactor)}px`;
-    const cssH = `${Math.round(word.h * state.scaleFactor)}px`;
+    // Bare bredden settes; høyden følger canvasets sideforhold (CSS height: auto), slik at et ord
+    // som er bredere enn leseflaten kan skaleres ned proporsjonalt (WCAG 1.4.10 Reflow).
+    // Uavrundet bredde: da blir høyden (bredde × sideforhold) eksakt h × skala for alle ord,
+    // også smale ord som «i», og grunnlinjene holder seg på linje.
+    const cssW = `${(word.w * state.scaleFactor).toFixed(3)}px`;
     for (const layer of ["orig", "ink"]) {
       const c = document.createElement("canvas");
       c.className = `word-${layer}`;
       c.dataset.origW = String(word.w);
       c.dataset.origH = String(word.h);
       c.style.width = cssW;
-      c.style.height = cssH;
       stack.appendChild(c);
     }
     drawOriginalWordCanvas(stack.firstChild, word);
@@ -3101,8 +3103,9 @@
       drawWordTokenCanvas(stack.lastChild, word, inkThreshold);
     } else {
       stack.lastChild.dataset.inkPending = "1";
-      stack.lastChild.width = 1;
-      stack.lastChild.height = 1;
+      // Tomt lag med samme sideforhold som ordet (høyden følger sideforholdet)
+      stack.lastChild.width = word.w;
+      stack.lastChild.height = word.h;
     }
     return stack;
   }
@@ -3370,8 +3373,12 @@
     canvases.forEach((c) => {
       const origW = Number(c.dataset.origW);
       const origH = Number(c.dataset.origH);
-      c.style.width = `${Math.round(origW * state.scaleFactor)}px`;
-      c.style.height = `${Math.round(origH * state.scaleFactor)}px`;
+      if (c.closest(".word-stack")) {
+        c.style.width = `${(origW * state.scaleFactor).toFixed(3)}px`;
+      } else {
+        c.style.width = `${Math.round(origW * state.scaleFactor)}px`;
+        c.style.height = `${Math.round(origH * state.scaleFactor)}px`;
+      }
     });
     updateReaderSpacingVariables();
   }
