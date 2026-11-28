@@ -62,8 +62,12 @@ I stedet for tradisjonell panorering/zooming segmenterer appen tekstlinjer og en
   - Skjæringen (de-jagg) dreier rundt samme kolonne også når bindestreken er kuttet bort; leseren midtstiller ordbrikkene (`align-items: center`).
   - Testet på Sult s. 12–18, 40, 50, 51, 81, 120, 150, 151, 200, 250, 300 og de fire andre bøkene i biblioteket: alle sammensydde ord riktige, ingen falske.
 
+- [x] **v1.9.0 – Utklipp etter målt grunnlinje:** Grunnlinjen (underkanten av x-høyden, persentilmetoden) måles i overlappende vinduer på ~4 linjehøyder langs hver linje; avvikende vinduer forkastes, og en lokal vektet rett linje gir grunnlinje og helning per ord. Utklippene legges etter denne i stedet for ordets eget blekktyngdepunkt (som er reserve). Målt med `D.measure()` på 17 sider i fem bøker: ordpar med ≥ 3 px avvik ved linjeskift 18,4 % → 10,9 % (innenfor linjene uendret ~14 %, som er målestøyen). Inspektørens stiplede kurve viser nå selve grunnlinjen.
+
 ### 🚧 Pågår
 _(Ingenting akkurat nå. Skriv mål, hva som er prøvd, testsider og neste steg her når du starter på noe.)_
+
+Mulig neste steg: behandle hvert avsnitt som én sammenhengende sekvens når grunnlinjen glattes (siste ord på linje N og første på N+1 som naboer), og se om det slår v1.9.0 på `D.measure()`.
 
 Kjente svakheter å se på:
 - Stor initial (som «D» i Sult s. 12) blir delt over to linjer.

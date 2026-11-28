@@ -1,5 +1,5 @@
 {
-  "version": "1.8.0",
-  "updatedAt": "2026-11-27T23:26:00+01:00",
-  "summary": "Renere linjeskift i Liquid-flyt: mørke sidekanter og støvkorn i margen blir ikke lenger egne «ord» (vertikale streker), halene på g/y/p fra linjen over blir ikke lenger en egen linje, og bindestrek-gjenkjenningen forveksler ikke lenger armen på «r» eller øret på «g» med en bindestrek. Doble frakturbindestreker (⸗) fjernes nå helt når ordet sys sammen."
+  "version": "1.9.0",
+  "updatedAt": "2026-11-28T09:28:00+01:00",
+  "summary": "Jevnere overgang mellom linjene i Liquid-flyt: ordene plasseres nå etter linjens målte grunnlinje (målt i vinduer langs linjen) i stedet for etter hvert ords blekktyngdepunkt. Ordpar som bommer med 3 px eller mer ved linjeskift er nesten halvert."
 }

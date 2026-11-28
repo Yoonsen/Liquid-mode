@@ -128,9 +128,9 @@
     iiifBook: null, // { title, pages: [{ label, serviceId }], currentIndex }
   };
 
-  const APP_VERSION = "1.8.0";
+  const APP_VERSION = "1.9.0";
   const APP_RELEASE_SUMMARY =
-    "Renere linjeskift i Liquid-flyt: mørke sidekanter og støvkorn i margen blir ikke lenger egne «ord» (vertikale streker), halene på g/y/p fra linjen over blir ikke lenger en egen linje, og bindestrek-gjenkjenningen forveksler ikke lenger armen på «r» eller øret på «g» med en bindestrek. Doble frakturbindestreker (⸗) fjernes nå helt når ordet sys sammen.";
+    "Jevnere overgang mellom linjene i Liquid-flyt: ordene plasseres nå etter linjens målte grunnlinje (målt i vinduer langs linjen) i stedet for etter hvert ords blekktyngdepunkt. Ordpar som bommer med 3 px eller mer ved linjeskift er nesten halvert.";
 
   // Hurtigminne (RAM-cache) for ferdig nedlastede IIIF-boksider (URL -> HTMLImageElement)
   const pageImageCache = new Map();
@@ -1698,30 +1698,26 @@
         : Math.max(6, normBottom - normTop + 1);
 
       /**
-       * Måler x-høyden (øvre og nedre kant av små bokstaver) i linjen like før kolonne
-       * letterR (relativt til x0). Returnerer null når målingen er usikker (da godtas
-       * bindestreken på de øvrige geometriske kravene).
+       * Måler x-høyden (øvre og nedre kant av små bokstaver) over kolonnene colL..colR
+       * (relativt til x0) i denne linjen. Returnerer null når målingen er usikker.
+       *
+       * x-høyden er det sammenhengende området rundt raden med mest blekk der hver rad har
+       * minst halvparten av 75-persentilen. Over en linjebit på flere bokstaver har opp- og
+       * nedstreker (k, l, g, p) langt mindre blekk per rad enn kroppen av de små bokstavene.
+       * (Bratteste stigning/fall brukes ikke: tverrstreken i «e» og fotseriffene gir brattere
+       * kanter enn toppen av x-høyden og grunnlinjen.)
        */
-      function measureXHeightBand(letterL, letterR) {
-        // Mål over de siste ~6 linjehøydene av linjen (8–10 bokstaver, også fra ordene
-        // foran): mange bokstaver gir en stabil x-høyde, og så kort strekning er
-        // skjevheten liten.
-        const winL = Math.max(0, letterR - Math.round(bandH * 6));
-        if (letterR - winL < 2) return null;
+      function measureXHeightRange(colL, colR) {
+        if (colR - colL < 2) return null;
         const mass = new Int32Array(bandH);
         for (let r = 0; r < bandH; r++) {
           const rowOff = (absTop + r) * fullW + x0;
           let m = 0;
-          for (let c = winL; c <= letterR; c++) {
+          for (let c = colL; c <= colR; c++) {
             if (state.gray[rowOff + c] < inkThreshold) m++;
           }
           mass[r] = m;
         }
-        // x-høyden er det sammenhengende området rundt raden med mest blekk der hver rad har
-        // minst halvparten av 75-persentilen. Over en hel linjebit har opp- og nedstreker
-        // (k, l, g, p) langt mindre blekk per rad enn kroppen av de små bokstavene. (Bratteste
-        // stigning/fall brukes ikke: tverrstreken i «e» og fotseriffene gir brattere kanter
-        // enn toppen av x-høyden og grunnlinjen.)
         const sorted = Array.from(mass).sort((a, b) => a - b);
         const q75 = sorted[Math.floor((sorted.length - 1) * 0.75)];
         if (q75 < 4) return null;
@@ -1733,7 +1729,15 @@
         while (top > 0 && mass[top - 1] >= minRowMass) top--;
         while (bottom < bandH - 1 && mass[bottom + 1] >= minRowMass) bottom++;
         if (bottom - top + 1 < Math.max(4, Math.round(bandH * 0.25))) return null;
-        return { top: absTop + top, bottom: absTop + bottom };
+        return { top: absTop + top, bottom: absTop + bottom, mass: q75 };
+      }
+
+      /**
+       * x-høyden like før kolonne letterR, målt over de siste ~6 linjehøydene av linjen
+       * (8–10 bokstaver, også fra ordene foran). Så kort strekning gir lite skjevhet.
+       */
+      function measureXHeightBand(letterL, letterR) {
+        return measureXHeightRange(Math.max(0, letterR - Math.round(bandH * 6)), letterR);
       }
 
       /**
@@ -2074,61 +2078,107 @@
         allWords.push(wordObj);
       }
 
-      // --- LOKAL GRUNNLINJE- & HELNINGS-REGRESJON (DE-JAGG) PER LINJE ---
-      // Tilpasser en Gaussisk-vektet lokal lineær regresjon (LOESS) gjennom ordenes
-      // x-høyde-sentre langs linjen. Dermed følger utklippsboksen både globale skjevheter
-      // og krumning inn mot bokryggen (gutter curve), mens tilfeldig variasjon mellom
-      // ord med/uten descendere ("og" vs "til") glattes helt ut!
-      if (lineWords.length >= 2) {
-        const sigmaX = Math.max(115, roiW * 0.34);
-        const invTwoSigmaSq = 1 / (2 * sigmaX * sigmaX);
+      // --- GRUNNLINJE & HELNING PER ORD (DE-JAGG) ---
+      // Utklippene plasseres etter linjens målte grunnlinje, ikke etter hvert ords eget
+      // blekktyngdepunkt: grunnlinjen er det leseren ser, og den er lik for «og», «til»,
+      // «Kraft» og «æ». Grunnlinjen måles i overlappende vinduer langs linjen, og en lokal
+      // vektet rett linje (LOESS) gjennom målingene gir grunnlinje og helning for hvert ord.
+      // Dermed følges skjevhet og krumning inn mot bokryggen.
+      const sigmaX = Math.max(115, roiW * 0.34);
+      const invTwoSigmaSq = 1 / (2 * sigmaX * sigmaX);
 
-        for (let i = 0; i < lineWords.length; i++) {
-          const target = lineWords[i];
-          const tx = target.x + target.w * 0.5;
+      // Lokal vektet lineær regresjon i punktet tx. Svak regularisering av helningen så
+      // korte linjer (to små ord) ikke overtilpasses.
+      function fitLocalLine(samples, tx) {
+        let sumW = 0;
+        let sumWX = 0;
+        let sumWY = 0;
+        let sumWXX = 0;
+        let sumWXY = 0;
+        for (const sp of samples) {
+          const dx = sp.x - tx;
+          const weight = Math.exp(-dx * dx * invTwoSigmaSq) * sp.weight;
+          sumW += weight;
+          sumWX += weight * dx;
+          sumWY += weight * sp.y;
+          sumWXX += weight * dx * dx;
+          sumWXY += weight * dx * sp.y;
+        }
+        if (sumW <= 0) return null;
+        const regLambda = sumW * 900;
+        const denom = sumW * (sumWXX + regLambda) - sumWX * sumWX;
+        if (Math.abs(denom) <= 1e-5) return { y: sumWY / sumW, slope: 0 };
+        return {
+          y: ((sumWXX + regLambda) * sumWY - sumWX * sumWXY) / denom,
+          // Begrens helning til maks ±0.18 rad (ca. ±10.3 grader)
+          slope: Math.max(-0.18, Math.min(0.18, (sumW * sumWXY - sumWX * sumWY) / denom)),
+        };
+      }
 
-          let sumW = 0;
-          let sumWX = 0;
-          let sumWY = 0;
-          let sumWXX = 0;
-          let sumWXY = 0;
-
-          for (let j = 0; j < lineWords.length; j++) {
-            const wj = lineWords[j];
-            const xj = wj.x + wj.w * 0.5;
-            const dx = xj - tx;
-            // Vekt etter horisontal Gaussisk nærhet og kvadratroten av ordets blekkmasse
-            const weight =
-              Math.exp(-dx * dx * invTwoSigmaSq) * Math.sqrt(wj.inkMass);
-
-            sumW += weight;
-            sumWX += weight * dx;
-            sumWY += weight * wj.rawYCore;
-            sumWXX += weight * dx * dx;
-            sumWXY += weight * dx * wj.rawYCore;
-          }
-
-          // Svak Tikhonov-regularisering på helningen så korte linjer (2 små ord) ikke overtilpasses
-          const regLambda = sumW * 900;
-          const denom = sumW * (sumWXX + regLambda) - sumWX * sumWX;
-          if (Math.abs(denom) > 1e-5 && sumW > 0) {
-            const intercept =
-              ((sumWXX + regLambda) * sumWY - sumWX * sumWXY) / denom;
-            const slope = (sumW * sumWXY - sumWX * sumWY) / denom;
-            target.yCoreLocal = intercept;
-            // Begrens helning til maks ±0.18 rad (ca. ±10.3 grader)
-            target.localSlope = Math.max(-0.18, Math.min(0.18, slope));
-            // Skjæringen skal dreie rundt samme kolonne som regresjonen ble målt i, også
-            // når ordet senere kuttes (bindestrek fjernet) eller utvides.
-            target.shearMidC = tx - target.x;
-          } else if (sumW > 0) {
-            target.yCoreLocal = sumWY / sumW;
-            target.localSlope = 0;
+      // Grunnlinjen (underkanten av x-høyden) i vinduer på ca. 4 linjehøyder langs linjen
+      function measureBaselineSamples() {
+        if (lineWords.length === 0) return [];
+        const left = lineWords[0].spanLeft;
+        const right = lineWords[lineWords.length - 1].spanRight;
+        const span = right - left + 1;
+        const winW = Math.max(8, Math.round(bandH * 4));
+        const step = Math.max(4, Math.round(bandH * 2));
+        const windows = [];
+        if (span <= winW * 1.25) {
+          windows.push([left, right]);
+        } else {
+          const n = Math.ceil((span - winW) / step) + 1;
+          for (let i = 0; i < n; i++) {
+            const wl = Math.round(left + (i * (span - winW)) / (n - 1));
+            windows.push([wl, wl + winW - 1]);
           }
         }
-      } else if (lineWords.length === 1) {
-        lineWords[0].yCoreLocal = lineWords[0].rawYCore;
-        lineWords[0].localSlope = 0;
+        const samples = [];
+        for (const [wl, wr] of windows) {
+          const band = measureXHeightRange(wl, wr);
+          if (!band) continue;
+          samples.push({ x: x0 + (wl + wr) * 0.5, y: band.bottom + 1, weight: band.mass });
+        }
+        if (samples.length < 3) return samples;
+        // Forkast vinduer som avviker tydelig fra linjen gjennom de andre (f.eks. et vindu
+        // med bare tall, en parentes eller en stor initial)
+        const tol = Math.max(3, bandH * 0.1);
+        const kept = samples.filter((sp) => {
+          const fit = fitLocalLine(samples.filter((o) => o !== sp), sp.x);
+          return !fit || Math.abs(sp.y - fit.y) <= tol;
+        });
+        return kept.length > 0 ? kept : samples;
+      }
+
+      // Utklippenes faste referansepunkt («kjernen») ligger en halv typisk x-høyde over
+      // grunnlinjen, slik at bokstavene står omtrent like midt i utklippet som før.
+      const coreAboveBaseline = medianLineHeight * 0.23;
+      const baselineSamples = measureBaselineSamples();
+
+      for (const target of lineWords) {
+        const tx = target.x + target.w * 0.5;
+        // Skjæringen skal dreie rundt samme kolonne som grunnlinjen ble målt i, også
+        // når ordet senere kuttes (bindestrek fjernet) eller utvides.
+        target.shearMidC = tx - target.x;
+        let fit = baselineSamples.length > 0 ? fitLocalLine(baselineSamples, tx) : null;
+        if (fit) {
+          target.baselineLocal = fit.y;
+          target.yCoreLocal = fit.y - coreAboveBaseline;
+          target.localSlope = fit.slope;
+          continue;
+        }
+        // Reserve når grunnlinjen ikke lot seg måle (svært korte linjer, ornamenter):
+        // ordenes eget blekktyngdepunkt, glattet langs linjen.
+        fit = fitLocalLine(
+          lineWords.map((wj) => ({
+            x: wj.x + wj.w * 0.5,
+            y: wj.rawYCore,
+            weight: Math.sqrt(wj.inkMass),
+          })),
+          tx
+        );
+        target.yCoreLocal = fit ? fit.y : target.rawYCore;
+        target.localSlope = fit && lineWords.length >= 2 ? fit.slope : 0;
       }
 
       if (state.useDejaggBaseline) {
@@ -2422,7 +2472,7 @@
         for (let i = 0; i < line.words.length; i++) {
           const lw = line.words[i];
           const cx = lw.x + lw.w * 0.5;
-          const cy = lw.yCoreLocal ?? line.yCore;
+          const cy = lw.baselineLocal ?? lw.yCoreLocal ?? line.yCore;
           if (i === 0) {
             overlayCtx.moveTo(lw.x, cy - (lw.w * 0.5) * (lw.localSlope || 0));
             overlayCtx.lineTo(cx, cy);

@@ -24,11 +24,13 @@ function ctx() {
   return { state, W: sourceCanvas.width, g: state.gray, th: state.otsuThreshold + state.contrastOffset };
 }
 
-// Grunnlinje målt i ordets utklipp: avstand fra canvas-bunn til raden med brattest fall i blekk.
+// Grunnlinje målt i ordets ferdige utklipp (med samme skjæring som leseren): avstand fra
+// utklippets bunn til underkanten av x-høyden (persentilmetoden). Uavhengig av hvordan appen
+// plasserte utklippet, så den kan brukes til å sammenligne versjoner.
 export function base(wd) {
   const { state, W, g, th } = ctx();
   const slope = state.useDejaggBaseline ? wd.localSlope || 0 : 0;
-  const midC = (wd.w - 1) / 2;
+  const midC = wd.shearMidC ?? (wd.w - 1) / 2;
   const cnt = new Float32Array(wd.h);
   for (let c = 0; c < wd.w; c++) {
     const dy = (c - midC) * slope;
@@ -37,16 +39,17 @@ export function base(wd) {
       if (g[y * W + wd.x + c] < th) cnt[r]++;
     }
   }
-  let best = -1;
-  let br = -1;
-  for (let r = 1; r + 2 < wd.h; r++) {
-    const d = cnt[r] + cnt[r - 1] - (cnt[r + 1] + cnt[r + 2]);
-    if (d > best) {
-      best = d;
-      br = r;
-    }
-  }
-  return best > 2 ? wd.h - 1 - br : null;
+  const sorted = Array.from(cnt).sort((a, b) => a - b);
+  const q75 = sorted[Math.floor((sorted.length - 1) * 0.75)];
+  if (q75 < 3) return null;
+  let peak = 0;
+  for (let r = 1; r < wd.h; r++) if (cnt[r] > cnt[peak]) peak = r;
+  let top = peak;
+  let bot = peak;
+  while (top > 0 && cnt[top - 1] >= q75 * 0.5) top--;
+  while (bot < wd.h - 1 && cnt[bot + 1] >= q75 * 0.5) bot++;
+  if (bot - top + 1 < 6) return null;
+  return wd.h - 1 - bot;
 }
 
 export function measure() {
@@ -71,7 +74,11 @@ export function measure() {
   };
   const W = ctx().W;
   const edgeWords = state.detectedWords.filter((w) => w.w < 20 && (w.x < 60 || w.x + w.w > W - 60)).length;
+  const share = (a, t) => +(a.filter((x) => Math.abs(x) >= t).length / Math.max(1, a.length)).toFixed(2);
   return {
+    crossN: diffs.length,
+    crossGe3: share(diffs.map((d) => d.d), 3),
+    withinGe3: share(within, 3),
     cross: +mean(diffs.map((d) => d.d)).toFixed(2),
     crossMed: med(diffs.map((d) => d.d)),
     within: +mean(within).toFixed(2),
